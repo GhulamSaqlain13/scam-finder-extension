@@ -1,0 +1,17 @@
+﻿<!doctype html>
+<html lang="en" class="popup-document">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Scam Finder</title><link rel="stylesheet" href="home.css"></head>
+<body class="popup">
+<header><div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6Z"/><path d="m8 12 3 3 5-6"/></svg></span><strong>Scam Finder</strong></div><span id="status" role="status">Loading…</span></header>
+<main>
+<div class="eyebrow">Your conversation guard</div>
+<h1>A second look.<br>Before you reply.</h1>
+<p>Open a Fiverr conversation, then run protection to check incoming messages for suspicious requests.</p>
+<button id="run" disabled>Run protection</button>
+<p id="notice" role="status"></p>
+<div class="privacy"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>On-device checks. Your messages stay private.</div>
+<section aria-label="Latest result" aria-live="polite"><div class="result-heading"><h2>Latest scan</h2><span>Across open tabs</span></div><strong id="risk">No messages checked</strong><ul id="signals"></ul><small id="checked-at"></small></section>
+<nav aria-label="Tools"><a href="tester.html" target="_blank">Message tester <span aria-hidden="true">↗</span></a><a href="options.html" target="_blank">Settings &amp; history <span aria-hidden="true">↗</span></a></nav>
+<small class="fine-print">Risk scores flag patterns, not proof of a scam. Only messages loaded in open Fiverr tabs are checked.</small>
+</main><script src="home.js"></script>
+</body></html>

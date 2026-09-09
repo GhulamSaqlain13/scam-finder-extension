@@ -1,0 +1,20 @@
+﻿{
+  "manifest_version": 3,
+  "name": "Scam Finder for Fiverr",
+  "version": "1.0.0",
+  "description": "Manually enable local message checks and receive inline scam-risk alerts on Fiverr.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["https://fiverr.com/*", "https://*.fiverr.com/*"],
+  "action": {
+    "default_title": "Scam Finder",
+    "default_popup": "extension/home.html"
+  },
+  "background": { "service_worker": "extension/background.js" },
+  "content_scripts": [{
+    "matches": ["https://fiverr.com/*", "https://*.fiverr.com/*"],
+    "js": ["extension/analyzer.js", "extension/content-script.js"],
+    "run_at": "document_idle"
+  }],
+  "options_page": "extension/options.html",
+  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'self'" }
+}

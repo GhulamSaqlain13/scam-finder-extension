@@ -1,0 +1,13 @@
+﻿<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Scam Finder settings</title><link rel="stylesheet" href="home.css"></head>
+<body class="page"><header><strong>Settings &amp; history</strong><a href="home.html">Back to home</a></header><main>
+<form id="settings">
+<section><h1>Detection settings</h1><label for="threshold">Show alerts at or above this risk score</label><div class="row"><input id="threshold" type="range" min="1" max="99" value="30"><output id="threshold-value">30%</output></div>
+<label class="row"><input id="keep-history" type="checkbox"> Keep the last 100 scan results on this device</label>
+<p>History contains scores, signals, and timestamps only. Turning history off deletes saved history. No messages or sender identities are stored.</p>
+<button id="save" disabled>Save settings</button><p id="notice" role="status"></p></section>
+</form>
+<section><div class="row between"><h2>Scan history</h2><span id="count">0 records</span></div><div id="history"></div><div class="row"><button class="secondary" id="export">Export JSON</button><button class="secondary" id="clear">Delete saved results</button></div><p id="history-notice" role="status"></p></section>
+<small>Detection uses local rules. It does not use AI or send your messages to a server.</small>
+</main><script src="options.js"></script></body></html>
