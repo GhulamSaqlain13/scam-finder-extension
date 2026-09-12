@@ -43,9 +43,30 @@ Tests require Playwright Chromium: npx playwright install chromium.
 
 The extension checks rendered messages in open Fiverr tabs, not unopened
 conversations. Selectors are heuristic and still need live Fiverr verification.
-Risk percentages are keyword-pattern scores, not calibrated probabilities.
+The popup reports the active tab's detected incoming messages separately from
+the global protection setting. Empty inboxes show "No messages detected";
+other pages show "Open a Fiverr conversation", and connection failures are
+reported explicitly. Counts are transient and are not saved.
+Authenticated live selector validation remains pending: the public inbox URL
+redirects to login. Browser tests use synthetic layouts, not captured Fiverr DOM.
+Risk labels are Low (0-29 rule points), Suspicious (30-59), and High (60-99),
+not probabilities. Alerts include actions for each detected signal. The popup
+separates the latest checked message from the highest-risk result seen across
+tabs since results were cleared. Both retain metadata only, even without history;
+Delete saved results clears both. Numeric rule points remain in settings and exports.
+Conversation flags retain risk in tab memory for 30 minutes after equally strong
+evidence was last visible. Weaker or missing evidence does not renew that risk;
+expiration rechecks current previews and messages even without a page update.
+Reused inbox rows use the new conversation's state. Rows without an identifiable
+conversation use only current evidence, with no retained score.
 Message text and sender identities are not saved or transmitted. The web analyzer
 and native analyzer are currently separate implementations.
+
+The extension also checks rendered link destinations locally for displayed-host
+mismatches, Fiverr-like hostnames outside fiverr.com, and URL user information.
+External links alone do not trigger a warning. Redirects are not followed and
+no reputation service is contacted. Hostname details appear only in live inline
+warnings; saved results contain fixed signal descriptions, never URLs.
 
 ## Recovery record
 

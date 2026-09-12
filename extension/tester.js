@@ -3,9 +3,9 @@ function analyze() {
   if (!input.value.trim()) { input.setCustomValidity("Enter a message."); input.reportValidity(); return; }
   input.setCustomValidity("");
   const result = globalThis.fsdAnalyze(input.value);
-  document.getElementById("risk").textContent = result.score + "% risk";
+  document.getElementById("risk").textContent = globalThis.fsdRiskLabel(result.score);
   document.getElementById("signals").replaceChildren(...result.signals.map(text => {
-    const li = document.createElement("li"); li.textContent = text; return li;
+    const li = document.createElement("li"); li.textContent = text + ". " + globalThis.fsdSignalAction(text); return li;
   }));
   document.getElementById("explanation").textContent = result.score ? "Review these warning signs before replying. This is a heuristic score, not a probability." : "No known rule matched. Stay cautious.";
 }
