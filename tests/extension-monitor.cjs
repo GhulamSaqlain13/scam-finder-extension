@@ -63,6 +63,7 @@ const { chromium } = require("playwright");
             },
           },
           sendMessage: async (message) => {
+            if (message.type === "FSD_HEARTBEAT") return { ok: true };
             if (message.type === "FSD_VISIBILITY")
               return { ok: true, missingCount: 0 };
             if (message.type === "FSD_CONVERSATION_RISK")
@@ -153,8 +154,8 @@ const { chromium } = require("playwright");
     await page.waitForTimeout(200);
     assert.equal(
       await page.locator("[data-fsd-warning]").count(),
-      0,
-      "Must start stopped",
+      1,
+      "Starts monitoring automatically",
     );
     await page.evaluate(() => chrome.storage.local.set({ fsd_enabled: true }));
     await page.waitForTimeout(250);

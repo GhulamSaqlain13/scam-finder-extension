@@ -2,7 +2,7 @@
 const button = document.getElementById("run");
 const status = document.getElementById("status");
 const notice = document.getElementById("notice");
-let enabled = false;
+let enabled = true;
 let statusVersion = 0;
 function setStatus(text, monitoring = false) {
   status.textContent = text;
@@ -107,7 +107,7 @@ function renderConversation(conversation) {
 }
 function render(data) {
   if ("fsd_enabled" in data || !document.body.dataset.running) {
-    if ("fsd_enabled" in data) enabled = data.fsd_enabled === true;
+    if ("fsd_enabled" in data) enabled = data.fsd_enabled !== false;
     setStatus(enabled ? "Checking this tab..." : "Stopped");
     document.body.dataset.running = String(enabled);
     button.textContent = enabled ? "Stop protection" : "Run protection";

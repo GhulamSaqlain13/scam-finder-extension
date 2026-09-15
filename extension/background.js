@@ -1,6 +1,37 @@
 ﻿/* global chrome */
 importScripts("evidence-vault.js");
 let queue = Promise.resolve();
+const contentScriptFiles = [
+  "extension/link-scanner.js",
+  "extension/sensitive-information.js",
+  "extension/analyzer.js",
+  "extension/message-detector.js",
+  "extension/message-extractor.js",
+  "extension/conversation-detector.js",
+  "extension/draft-guard.js",
+  "extension/content-script.js",
+];
+function injectIntoFiverrTabs() {
+  chrome.tabs
+    .query({ url: ["https://fiverr.com/*", "https://*.fiverr.com/*"] })
+    .then((tabs) =>
+      Promise.all(
+        tabs
+          .filter((tab) => Number.isInteger(tab.id))
+          .map((tab) =>
+            chrome.scripting
+              .executeScript({
+                target: { tabId: tab.id },
+                files: contentScriptFiles,
+              })
+              .catch(() => {}),
+          ),
+      ),
+    )
+    .catch(() => {});
+}
+chrome.runtime.onInstalled.addListener(injectIntoFiverrTabs);
+chrome.runtime.onStartup.addListener(injectIntoFiverrTabs);
 function evidenceRecords(values) {
   if (!Array.isArray(values)) return [];
   const optionalText = (value) =>
@@ -130,6 +161,10 @@ function observationRecords(values) {
     }));
 }
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  if (message?.type === "FSD_HEARTBEAT") {
+    respond({ ok: true });
+    return;
+  }
   const extensionPage =
     sender.id === chrome.runtime.id &&
     sender.url?.startsWith(chrome.runtime.getURL("extension/"));
@@ -160,7 +195,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       return;
     queue = queue.then(async () => {
       const state = await chrome.storage.local.get("fsd_enabled");
-      if (!state.fsd_enabled) return { ok: false };
+      if (state.fsd_enabled === false) return { ok: false };
       return {
         ok: true,
         ...(await fsdEvidenceVault.missing(
@@ -193,7 +228,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       return;
     queue = queue.then(async () => {
       const state = await chrome.storage.local.get("fsd_enabled");
-      if (!state.fsd_enabled) return { ok: false };
+      if (state.fsd_enabled === false) return { ok: false };
       const conversationIds = message.conversationIds.map((id) =>
         id.startsWith("url:") ? id.slice(4).split("?")[0] : id,
       );
@@ -305,7 +340,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
         "fsd_last_result",
         "fsd_highest_result",
       ]);
-      if (!data.fsd_enabled) return { ok: false };
+      if (data.fsd_enabled === false) return { ok: false };
       try {
         const records = evidenceRecords(message.evidence);
         const observations = observationRecords(message.observations);

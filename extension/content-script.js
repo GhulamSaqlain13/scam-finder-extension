@@ -173,6 +173,7 @@
   const rowKeys = new WeakMap();
   const riskRetentionMs = 30 * 60 * 1000;
   const flags = new WeakMap();
+  let heartbeatTimer;
   let chatFlag;
   const unavailablePattern =
     /\b(?:can no longer be contacted|no longer available|account (?:disabled|removed|restricted|unavailable)|user (?:disabled|removed|restricted|unavailable)|fiverr (?:removed|restricted|blocked))\b/i;
@@ -337,6 +338,25 @@
     if (!target) return;
     chatFlag = createFlag(score, "data-fsd-chat-flag");
     target.append(chatFlag);
+  }
+  function startExtensionHeartbeat() {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = setInterval(() => {
+      try {
+        const result = chrome.runtime.sendMessage({ type: "FSD_HEARTBEAT" });
+        result?.catch(() => {
+          document
+            .querySelectorAll("[data-fsd-flag],[data-fsd-chat-flag]")
+            .forEach((flag) => flag.remove());
+          clearInterval(heartbeatTimer);
+        });
+      } catch {
+        document
+          .querySelectorAll("[data-fsd-flag],[data-fsd-chat-flag]")
+          .forEach((flag) => flag.remove());
+        clearInterval(heartbeatTimer);
+      }
+    }, 1000);
   }
   async function scanConversations(
     messageResults,
@@ -701,6 +721,9 @@
       seen = new WeakMap();
       detector.start();
       draftGuard.start();
+      setTimeout(() => {
+        if (running) scan();
+      }, 500);
     }
   }
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
@@ -755,7 +778,8 @@
       threshold = Number.isInteger(data.fsd_threshold)
         ? Math.max(1, Math.min(100, data.fsd_threshold))
         : 30;
-      if (version === storageVersion) setRunning(data.fsd_enabled === true);
+      if (version === storageVersion) setRunning(data.fsd_enabled !== false);
     })
     .catch(() => {});
+  startExtensionHeartbeat();
 })();

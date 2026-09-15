@@ -44,30 +44,15 @@ const { chromium } = require("playwright");
       (id) => chrome.tabs.update(id, { active: true }),
       tabId,
     );
-    // Exercise recovery when the initial connection to an open tab fails.
-    await popup.evaluate(() => {
-      const send = chrome.tabs.sendMessage.bind(chrome.tabs);
-      const inject = chrome.scripting.executeScript.bind(chrome.scripting);
-      window.injections = 0;
-      chrome.tabs.sendMessage = (...args) => {
-        if (!window.injections) return Promise.reject(new Error("No receiver"));
-        return send(...args);
-      };
-      chrome.scripting.executeScript = (...args) => {
-        window.injections++;
-        return inject(...args);
-      };
-    });
-    await popup.evaluate(() => document.getElementById("run").click());
     await popup.waitForFunction(
       () =>
         document.getElementById("status").textContent ===
         "Monitoring this conversation",
     );
     assert.equal(
-      await popup.evaluate(() => window.injections),
-      1,
-      "Run injects local scripts when the initial connection fails",
+      await popup.locator("#run").textContent(),
+      "Stop protection",
+      "Protection starts automatically",
     );
     await popup.waitForFunction(
       () =>
