@@ -15,8 +15,10 @@ async function loadHistory() {
     const row = document.createElement("article");
     const score = document.createElement("strong"); score.textContent = globalThis.fsdRiskLabel(result.score);
     const time = document.createElement("small"); time.textContent = new Date(result.checkedAt).toLocaleString();
-    const signals = document.createElement("p"); signals.textContent = result.signals.map(signal => signal + ". " + globalThis.fsdSignalAction(signal)).join(" ") || "No rule matched. Low does not guarantee safety.";
-    row.append(score, time, signals); container.append(row);
+    const signals = document.createElement("p"); signals.textContent = result.signals.map(signal => signal + ". " + globalThis.fsdSignalAction(signal)).join(" ") || "No rule matched. SAFE does not guarantee safety.";
+    const categories = document.createElement("p"); categories.className = "category-summary";
+    categories.textContent = globalThis.fsdCategoryLabels(result.signals).join(". ");
+    row.append(score, categories, time, signals); container.append(row);
   }
   document.getElementById("export").disabled = history.length === 0;
 }

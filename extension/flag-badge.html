@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flag badge</title>
+    <style>
+      body {
+        display: grid;
+        gap: 14px;
+        margin: 24px;
+        color: #192c28;
+        font:
+          600 13px/1.2 "Segoe UI",
+          sans-serif;
+      }
+
+      .badge-demo {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        width: fit-content;
+        min-height: 28px;
+        padding: 4px 9px 4px 5px;
+        border: 1px solid var(--badge-border);
+        border-radius: 999px;
+        background: var(--badge-background);
+        color: var(--badge-color);
+      }
+
+      .flag-badge {
+        position: relative;
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        color: var(--badge-color);
+        vertical-align: middle;
+        filter: drop-shadow(0 1px 1px rgb(0 0 0 / 12%));
+      }
+
+      .flag-badge::before {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 2px;
+        height: 16px;
+        border-radius: 1px;
+        background: currentColor;
+        content: "";
+      }
+
+      .flag-badge::after {
+        position: absolute;
+        top: 3px;
+        left: 4px;
+        width: 11px;
+        height: 8px;
+        border: 0;
+        border-radius: 1px 1px 1px 0;
+        background: currentColor;
+        clip-path: polygon(0 0, 100% 0, 78% 50%, 100% 100%, 0 100%);
+        content: "";
+      }
+
+      .flag-badge:focus-visible {
+        outline: 2px solid #192c28;
+        outline-offset: 3px;
+      }
+
+      .badge-demo[data-risk="red"] {
+        --badge-color: #b23b3b;
+        --badge-border: #e2baba;
+        --badge-background: #fff4f4;
+      }
+
+      .badge-demo[data-risk="yellow"] {
+        --badge-color: #b47716;
+        --badge-border: #e6d1a5;
+        --badge-background: #fffaf0;
+      }
+
+      .badge-demo[data-risk="green"] {
+        --badge-color: #238052;
+        --badge-border: #b9ddc7;
+        --badge-background: #f1fbf4;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="badge-demo" data-risk="red">
+      <span
+        class="flag-badge"
+        role="img"
+        aria-label="Scam alert"
+        title="Scam alert"
+        tabindex="0"
+      ></span>
+      <span>Scam alert</span>
+    </div>
+    <div class="badge-demo" data-risk="yellow">
+      <span
+        class="flag-badge"
+        role="img"
+        aria-label="Needs caution"
+        title="Needs caution"
+        tabindex="0"
+      ></span>
+      <span>Needs caution</span>
+    </div>
+    <div class="badge-demo" data-risk="green">
+      <span
+        class="flag-badge"
+        role="img"
+        aria-label="Safe"
+        title="Safe"
+        tabindex="0"
+      ></span>
+      <span>Safe</span>
+    </div>
+  </body>
+</html>

@@ -1,15 +1,95 @@
 ﻿<!doctype html>
 <html lang="en" class="popup-document">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Scam Finder</title><link rel="stylesheet" href="home.css"></head>
-<body class="popup">
-<header><div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6Z"/><path d="m8 12 3 3 5-6"/></svg></span><strong>Scam Finder</strong></div><span id="status" role="status">Loading…</span></header>
-<main>
-<button id="run" disabled>Run protection</button>
-<p id="notice" role="status"></p>
-<div class="privacy"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>On-device checks. Your messages stay private.</div>
-<section aria-label="Highest risk seen" aria-live="polite"><div class="result-heading"><h2>Highest risk seen</h2><span>Since results cleared</span></div><strong id="highest-risk">No messages checked</strong><ul id="highest-signals"></ul><small id="highest-checked-at"></small></section>
-<section aria-label="Latest checked message" aria-live="polite"><div class="result-heading"><h2>Latest checked message</h2></div><strong id="risk">No messages checked</strong><ul id="signals"></ul><small id="checked-at"></small></section>
-<nav aria-label="Tools"><a href="tester.html" target="_blank">Message tester <span aria-hidden="true">↗</span></a><a href="options.html" target="_blank">Settings &amp; history <span aria-hidden="true">↗</span></a></nav>
-<small class="fine-print">Both results cover open Fiverr tabs. Labels reflect warning signs, not probabilities. Low does not guarantee safety.</small>
-</main><script src="analyzer.js"></script><script src="home.js"></script>
-</body></html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Scam Finder</title>
+    <link rel="stylesheet" href="home.css" />
+  </head>
+  <body class="popup">
+    <header>
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"
+          ><svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+          >
+            <path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6Z" />
+            <path d="m8 12 3 3 5-6" /></svg></span
+        ><strong>Scam Finder</strong>
+      </div>
+      <span id="status" role="status">Loading…</span>
+    </header>
+    <main>
+      <button id="run" disabled>Run protection</button>
+      <p id="notice" role="status"></p>
+      <div class="privacy">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <rect x="5" y="10" width="14" height="11" rx="2" />
+          <path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg
+        >On-device checks. Your messages stay private.
+      </div>
+      <section aria-label="Current conversation" aria-live="polite">
+        <div class="result-heading">
+          <div>
+            <h2>Current conversation</h2>
+            <p class="section-help">
+              Messages in this chat are checked on your device.
+            </p>
+          </div>
+          <span id="conversation-state">Waiting</span>
+        </div>
+        <dl id="conversation-summary"></dl>
+      </section>
+      <section aria-label="Most serious warning" aria-live="polite">
+        <div class="result-heading">
+          <div>
+            <h2>Most serious warning</h2>
+            <p class="section-help">
+              The strongest warning found in this chat.
+            </p>
+          </div>
+          <span>Saved locally</span>
+        </div>
+        <strong id="highest-risk">No messages checked</strong>
+        <ul id="highest-signals"></ul>
+        <small id="highest-checked-at"></small>
+      </section>
+      <section aria-label="Latest checked message" aria-live="polite">
+        <div class="result-heading">
+          <div>
+            <h2>Latest check</h2>
+            <p class="section-help">The most recent message we reviewed.</p>
+          </div>
+        </div>
+        <strong id="risk">No messages checked</strong>
+        <ul id="signals"></ul>
+        <small id="checked-at"></small>
+      </section>
+      <nav aria-label="Tools">
+        <a href="tester.html" target="_blank"
+          >Message tester <span aria-hidden="true">↗</span></a
+        ><a href="options.html" target="_blank"
+          >Settings &amp; history <span aria-hidden="true">↗</span></a
+        >
+      </nav>
+      <small class="fine-print"
+        >HIGH and CRITICAL messages and sender details are saved in the local
+        evidence vault. Labels are not probabilities; SAFE does not guarantee
+        safety.</small
+      >
+    </main>
+    <script src="link-scanner.js"></script>
+    <script src="sensitive-information.js"></script>
+    <script src="analyzer.js"></script>
+    <script src="home.js"></script>
+  </body>
+</html>

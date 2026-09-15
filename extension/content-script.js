@@ -2,63 +2,346 @@
 (() => {
   if (globalThis.__fsdMonitorLoaded) return;
   globalThis.__fsdMonitorLoaded = true;
-  const selector = '[data-testid="message"],[data-testid="message-bubble"],[data-message-id],[class*="message-bubble"],[class*="messageBubble"],[class*="conversation-message"]';
+  const {
+    selector,
+    candidateSelector,
+    rowContainerSelector,
+    rowSelector,
+    previewSelector,
+  } = globalThis.fsdMessageDetector;
+  const { links: messageLinks } = globalThis.fsdMessageExtractor;
   let running = false;
   let threshold = 30;
-  let timer;
   let expiryTimer;
   let seen = new WeakMap();
   let storageVersion = 0;
   let messageCount = 0;
-  const pendingMessages = new Set();
-  const pendingRows = new Set();
   const currentResults = new Map();
+  const visibleMessages = new Map();
+  const observedMessages = new Map();
+  const lastConversationByPath = new Map();
+  let conversationStatus;
+  let visibilityTimer;
+  let visibilityVersion = 0;
+  let previousNotice;
+  let noticePath = location.pathname;
+  function clearPreviousNotice() {
+    previousNotice?.remove();
+    previousNotice = undefined;
+  }
+  function trimObservedConversations() {
+    while (observedMessages.size > 100)
+      observedMessages.delete(observedMessages.keys().next().value);
+    while (lastConversationByPath.size > 100)
+      lastConversationByPath.delete(lastConversationByPath.keys().next().value);
+  }
+  function observeMessage(message) {
+    const path = location.pathname;
+    visibleMessages.set(message.node, {
+      id: message.id,
+      conversationId: message.conversationId,
+      path,
+    });
+    if (!message.conversationId) return;
+    if (!observedMessages.has(message.conversationId))
+      observedMessages.set(message.conversationId, new Set());
+    const observed = observedMessages.get(message.conversationId);
+    if (observed.size < 10000) observed.add(message.id);
+    if (/^\/inbox\/[^/]+/.test(path))
+      lastConversationByPath.set(path, message.conversationId);
+    trimObservedConversations();
+  }
+  function updatePreviousNotice() {
+    clearTimeout(visibilityTimer);
+    visibilityTimer = undefined;
+    const version = ++visibilityVersion;
+    const path = location.pathname;
+    if (!running || !/^\/inbox\/[^/]+/.test(path)) {
+      clearPreviousNotice();
+      return;
+    }
+    const main =
+      globalThis.fsdConversationDetector?.conversationRoot?.() ||
+      document.querySelector('main,[role="main"]') ||
+      document.body;
+    if (main && !main.getClientRects().length) {
+      clearPreviousNotice();
+      return;
+    }
+    const visibleInPath = [...visibleMessages.values()].filter(
+      (message) => message.path === path,
+    );
+    const conversationIds = new Set(
+      visibleInPath.map((message) => message.conversationId).filter(Boolean),
+    );
+    if (conversationIds.size > 1 || visibleInPath.length > 10000) {
+      clearPreviousNotice();
+      return;
+    }
+    const conversationId =
+      [...conversationIds][0] || lastConversationByPath.get(path) || path;
+    const visibleIds = visibleInPath
+      .filter((message) => message.conversationId === conversationId)
+      .map((message) => message.id);
+    const observedIds = [...(observedMessages.get(conversationId) || [])];
+    if (observedIds.length > 10000) {
+      clearPreviousNotice();
+      return;
+    }
+    chrome.runtime
+      .sendMessage({
+        type: "FSD_VISIBILITY",
+        conversationId,
+        visibleIds,
+        observedIds,
+      })
+      .then((response) => {
+        if (
+          !running ||
+          version !== visibilityVersion ||
+          path !== location.pathname
+        )
+          return;
+        clearPreviousNotice();
+        if (!response?.ok || !response.suspiciousMissingCount) return;
+        const host = document.createElement("aside");
+        host.dataset.fsdPrevious = "true";
+        const root = host.attachShadow({ mode: "open" });
+        const style = document.createElement("style");
+        style.textContent =
+          ":host{display:block;max-width:420px;margin:12px 0}section{font:13px/1.5 system-ui;padding:12px;border:1px solid #b99036;border-left:4px solid var(--risk-color);border-radius:6px;background:#fff9e9;color:#3f3218;box-shadow:0 2px 10px rgba(45,36,16,.08)}strong{display:block;color:var(--risk-color);font-size:13px;letter-spacing:0;text-transform:uppercase}p{margin:6px 0 0}.meta{display:grid;grid-template-columns:max-content 1fr;gap:4px 10px;margin:10px 0 0}.meta span:nth-child(odd){font-weight:700}a{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;font:700 12px/1.4 system-ui;border:1px solid #9f812f;border-radius:4px;background:#fff;color:#3f3218;min-height:32px;margin-top:12px;padding:6px 10px;cursor:pointer}a:hover{background:#fff3ca}a:focus-visible{outline:2px solid #176348;outline-offset:2px}";
+        host.style.setProperty(
+          "--risk-color",
+          globalThis.fsdRiskColor(response.maxRisk || 61),
+        );
+        const section = document.createElement("section");
+        section.setAttribute("role", "status");
+        const title = document.createElement("strong");
+        title.textContent = "SCAM ACTIVITY DETECTED";
+        const text = document.createElement("p");
+        text.textContent =
+          "Suspicious messages from this conversation are no longer visible on Fiverr.";
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        const detectedLabel = document.createElement("span");
+        detectedLabel.textContent = "Previously detected:";
+        const detectedValue = document.createElement("span");
+        detectedValue.textContent = String(response.suspiciousMissingCount);
+        const riskLabel = document.createElement("span");
+        riskLabel.textContent = "Risk:";
+        const riskValue = document.createElement("span");
+        riskValue.textContent = globalThis.fsdRiskLabel(response.maxRisk || 61);
+        const note = document.createElement("p");
+        note.textContent =
+          "Messages can disappear for multiple reasons. This warning only appears because the missing message was already suspicious before it disappeared.";
+        const button = document.createElement("a");
+        button.textContent = "View Evidence";
+        button.href = chrome.runtime.getURL(
+          "extension/options.html?conversation=" +
+            encodeURIComponent(conversationId) +
+            "#conversation-evidence",
+        );
+        button.target = "_blank";
+        button.rel = "noopener";
+        button.setAttribute("role", "button");
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          chrome.runtime
+            .sendMessage({ type: "FSD_OPEN_EVIDENCE", conversationId })
+            .catch(() => {
+              window.open(button.href, "_blank", "noopener");
+            });
+        });
+        meta.append(detectedLabel, detectedValue, riskLabel, riskValue);
+        section.append(title, text, meta, note, button);
+        root.append(style, section);
+        (document.querySelector("main") || document.body).prepend(host);
+        previousNotice = host;
+      })
+      .catch(() => {});
+  }
+  function scheduleVisibility() {
+    visibilityVersion++;
+    if (visibilityTimer === undefined)
+      visibilityTimer = setTimeout(updatePreviousNotice, 750);
+  }
   const knownRows = new Set();
   const previewCache = new WeakMap();
   const alerts = new WeakMap();
-  const rowContainerSelector = '[data-testid="conversation-item"],[data-testid="inbox-conversation"],[data-conversation-id],.conversation-list-item,.conversation-item,.inbox-conversation,.inbox-list-item';
-  const rowSelector = rowContainerSelector + ',a[href*="/inbox/"]';
-  const previewSelector = '[data-testid="message-preview"],[data-testid="last-message"],[class*="message-preview"],[class*="last-message"],.message-preview,.last-message,.message-snippet,.conversation-preview';
   // Conversation references and scores live only in this tab's memory.
   const conversationScores = new Map();
   const rowKeys = new WeakMap();
   const riskRetentionMs = 30 * 60 * 1000;
   const flags = new WeakMap();
-  function messageLinks(node) {
-    const anchors = [...node.querySelectorAll("a[href]")];
-    if (node.matches("a[href]")) anchors.unshift(node);
-    return anchors.map(link => ({ href: link.href, text: (link.innerText || link.textContent || "").trim() }));
+  let chatFlag;
+  const unavailablePattern =
+    /\b(?:can no longer be contacted|no longer available|account (?:disabled|removed|restricted|unavailable)|user (?:disabled|removed|restricted|unavailable)|fiverr (?:removed|restricted|blocked))\b/i;
+  function conversationRiskScore(results) {
+    const scores = results
+      .map((result) => result.score)
+      .filter((score) => Number.isInteger(score) && score > 0)
+      .sort((a, b) => b - a);
+    if (!scores.length) return 0;
+    return Math.min(
+      100,
+      scores[0] +
+        Math.round(
+          scores.slice(1).reduce((sum, score) => sum + score, 0) * 0.5,
+        ),
+    );
+  }
+  function riskSummary(result) {
+    const categories = new Set(result.categories || []);
+    if (categories.has("PHISHING") || categories.has("ACCOUNT_VERIFICATION"))
+      return "This message may be a phishing attempt.";
+    if (categories.has("PAYMENT_SCAM"))
+      return "This message may be a payment scam.";
+    if (categories.has("PERSONAL_INFORMATION"))
+      return "This message may be requesting sensitive information.";
+    if (categories.has("MALWARE")) return "This message may be unsafe.";
+    if (categories.has("EXTERNAL_COMMUNICATION"))
+      return "This message asks to move communication outside Fiverr.";
+    return "This message contains warning signs.";
+  }
+  function compactText(node) {
+    return (node.innerText || node.textContent || "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  function rowPreview(row) {
+    const preview = row.querySelector(previewSelector);
+    if (preview)
+      return {
+        node: preview,
+        text: compactText(preview),
+        links: messageLinks(preview),
+      };
+    const text = compactText(row);
+    if (!text || text.length > 12000) return null;
+    return { node: row, text, links: messageLinks(row) };
+  }
+  function unavailableResult(text) {
+    if (!unavailablePattern.test(text)) return null;
+    return {
+      score: 61,
+      signals: ["Fiverr contact is no longer available"],
+      categories: ["ACCOUNT_STATUS"],
+    };
+  }
+  function statusResult() {
+    if (!/^\/inbox\/[^/]+/.test(location.pathname)) return null;
+    const main =
+      globalThis.fsdConversationDetector?.conversationRoot?.() ||
+      document.querySelector('main,[role="main"]') ||
+      document.body;
+    if (!main || !main.getClientRects().length) return null;
+    const text = compactText(main);
+    const result = unavailableResult(text);
+    return result
+      ? {
+          id: "status:contact-unavailable",
+          conversationId: location.pathname,
+          text,
+          result,
+        }
+      : null;
   }
   function conversationKey(row) {
-    const link = row.matches("a[href]") ? row : row.querySelector('a[href*="/inbox/"]');
+    const link = row.matches("a[href]")
+      ? row
+      : row.querySelector('a[href*="/inbox/"]');
     if (link) {
       try {
         const url = new URL(link.href, location.href);
         return "url:" + url.pathname + url.search;
-      } catch { /* Fall back to an explicit conversation ID. */ }
+      } catch {
+        /* Fall back to an explicit conversation ID. */
+      }
     }
-    return row.dataset.conversationId ? "id:" + row.dataset.conversationId : null;
+    if (row.dataset.conversationId) return "id:" + row.dataset.conversationId;
+    const participant = row.matches(".ce05uz8.contact,.ce05uz0.contact")
+      ? row.querySelector('.user-info p, .user-info [data-track-tag="text"], p')
+      : null;
+    if (participant) {
+      const name = compactText(participant).replace(/^@/, "").trim();
+      if (name)
+        return "url:/inbox/" + encodeURIComponent(name.replace(/\s+/g, "_"));
+    }
+    return null;
   }
-  function flagConversation(row, score) {
-    const previous = flags.get(row);
-    if (score < threshold) { previous?.remove(); return; }
-    if (previous?.isConnected && previous.dataset.score === String(score)) return;
-    previous?.remove();
+  function storedConversationId(key) {
+    if (!key) return null;
+    if (key.startsWith("url:")) return key.slice(4).split("?")[0];
+    return key.startsWith("id:") ? key.slice(3) : key;
+  }
+  function createFlag(score, attribute) {
     const flag = document.createElement("span");
-    flag.dataset.fsdFlag = "true";
+    flag.setAttribute(attribute, "true");
     flag.dataset.score = String(score);
     const root = flag.attachShadow({ mode: "open" });
     const style = document.createElement("style");
-    style.textContent = ':host{display:inline-flex;vertical-align:middle;margin:4px 6px;flex-shrink:0}span{display:inline-flex;align-items:center;gap:4px;padding:3px 6px;border:1px solid #e7b8ae;border-radius:5px;background:#fff1ed;color:#9b3528;font:600 11px/1.4 system-ui;white-space:nowrap}svg{width:12px;height:12px}';
+    style.textContent =
+      ':host{display:inline-flex;align-items:center;gap:7px;min-height:28px;margin:2px 6px;padding:4px 9px 4px 5px;border:1px solid var(--risk-border);border-radius:999px;background:var(--risk-bg);color:var(--risk-color);font:600 11px/1.2 system-ui;white-space:nowrap;vertical-align:middle;flex:0 0 auto}.flag-badge{position:relative;display:inline-block;width:20px;height:20px;color:var(--risk-color);vertical-align:middle;filter:drop-shadow(0 1px 1px rgba(0,0,0,.12))}.flag-badge:before{content:"";position:absolute;top:2px;left:2px;width:2px;height:16px;border-radius:1px;background:currentColor}.flag-badge:after{content:"";position:absolute;top:3px;left:4px;width:11px;height:8px;border:0;border-radius:1px 1px 1px 0;background:currentColor;clip-path:polygon(0 0,100% 0,78% 50%,100% 100%,0 100%)}.flag-badge:focus-visible{outline:2px solid #192c28;outline-offset:3px}.badge-label{display:inline-block}';
     const badge = document.createElement("span");
-    badge.textContent = "⚑ " + globalThis.fsdRiskLabel(score);
-    badge.title = "Suspicious message patterns detected. This score is not proof that the sender is a scammer.";
-    badge.setAttribute("aria-label", "Conversation risk: " + globalThis.fsdRiskLabel(score) + ". Suspicious message patterns detected.");
-    root.append(style, badge);
-    row.append(flag);
+    badge.className = "flag-badge";
+    const badgeColor =
+      score > 60 ? "#b23b3b" : score > 20 ? "#b47716" : "#238052";
+    const badgeLabel =
+      score > 60 ? "Scam alert" : score > 20 ? "Needs caution" : "Safe";
+    badge.style.setProperty("--risk-color", badgeColor);
+    badge.style.setProperty(
+      "--risk-border",
+      score > 60 ? "#e2baba" : score > 20 ? "#e6d1a5" : "#b9ddc7",
+    );
+    badge.style.setProperty(
+      "--risk-bg",
+      score > 60 ? "#fff4f4" : score > 20 ? "#fffaf0" : "#f1fbf4",
+    );
+    badge.title =
+      badgeLabel + ". This is a local pattern check, not proof of a scam.";
+    badge.setAttribute("role", "img");
+    badge.tabIndex = 0;
+    badge.setAttribute("aria-label", badgeLabel + " conversation status.");
+    const label = document.createElement("span");
+    label.className = "badge-label";
+    label.textContent = badgeLabel;
+    root.append(style, badge, label);
+    return flag;
+  }
+  function flagConversation(row, score) {
+    const previous = flags.get(row);
+    if (previous?.isConnected && previous.dataset.score === String(score))
+      return;
+    previous?.remove();
+    const flag = createFlag(score, "data-fsd-flag");
+    const target =
+      row.querySelector(".user-info") ||
+      row.querySelector('a[href*="/inbox/"]') ||
+      row;
+    target.append(flag);
     flags.set(row, flag);
   }
-  function scanConversations(messageResults, candidates = document.querySelectorAll(rowSelector)) {
+  function updateChatFlag(score) {
+    if (chatFlag?.isConnected && chatFlag.dataset.score === String(score))
+      return;
+    chatFlag?.remove();
+    chatFlag = undefined;
+    if (!score) return;
+    const root =
+      globalThis.fsdConversationDetector?.conversationRoot?.() || document.body;
+    const avatar = root.querySelector('[data-track-tag="avatar"]');
+    const target =
+      root.querySelector('header,[role="banner"]') ||
+      avatar?.parentElement?.parentElement?.parentElement ||
+      root;
+    if (!target) return;
+    chatFlag = createFlag(score, "data-fsd-chat-flag");
+    target.append(chatFlag);
+  }
+  async function scanConversations(
+    messageResults,
+    candidates = document.querySelectorAll(rowSelector),
+  ) {
     clearTimeout(expiryTimer);
     const now = Date.now();
     for (const [key, record] of conversationScores) {
@@ -70,10 +353,25 @@
       const row = candidate.closest(rowContainerSelector) || candidate;
       // Keep the row wrapper: it contains both the link and preview in many inbox layouts.
       if (row.querySelector(rowContainerSelector)) continue;
-      if (row.querySelector(selector) && !row.querySelector(previewSelector)) continue;
+      if (row.querySelector(selector) && !row.querySelector(previewSelector))
+        continue;
       rows.add(row);
       knownRows.add(row);
     }
+    const keys = [...rows].map(conversationKey).filter(Boolean);
+    let storedScores = {};
+    if (keys.length) {
+      try {
+        const response = await chrome.runtime.sendMessage({
+          type: "FSD_CONVERSATION_RISK",
+          conversationIds: [...new Set(keys.map(storedConversationId))],
+        });
+        storedScores = response?.scores || {};
+      } catch {
+        /* Local preview analysis remains available if storage is unavailable. */
+      }
+    }
+    let activeScore = 0;
     for (const row of rows) {
       const key = conversationKey(row);
       if (rowKeys.get(row) !== key) {
@@ -82,41 +380,71 @@
         rowKeys.set(row, key);
       }
       let score = 0;
-      const preview = row.querySelector(previewSelector);
-      if (preview && !preview.closest('[data-direction="outgoing"],[data-is-own="true"],.outgoing')) {
-        const text = (preview.innerText || preview.textContent || "").trim();
-        const links = messageLinks(preview);
-        if ((text || links.length) && text.length <= 12000) {
+      const preview = rowPreview(row);
+      if (
+        preview &&
+        !preview.node.closest(
+          '[data-direction="outgoing"],[data-is-own="true"],.outgoing',
+        )
+      ) {
+        const { text, links } = preview;
+        if (text || links.length) {
           const linkKey = JSON.stringify(links);
-          let cached = previewCache.get(preview);
+          let cached = previewCache.get(preview.node);
           if (cached?.text !== text || cached?.linkKey !== linkKey) {
-            cached = { text, linkKey, result: globalThis.fsdAnalyze(text, links) };
-            previewCache.set(preview, cached);
+            const accountStatus = unavailableResult(text);
+            cached = {
+              text,
+              linkKey,
+              result: accountStatus || globalThis.fsdAnalyze(text, links),
+            };
+            previewCache.set(preview.node, cached);
           }
           score = Math.max(score, cached.result.score);
         }
       }
-      const active = row.matches('[aria-current="page"],[aria-selected="true"],.selected,.active') ||
+      const active =
+        row.matches(
+          '[aria-current="page"],[aria-selected="true"],.selected,.active,.active-contact',
+        ) ||
         !!row.querySelector('[aria-current="page"],[aria-selected="true"]') ||
         (key && key === "url:" + location.pathname + location.search);
-      if (active) for (const result of messageResults) score = Math.max(score, result.score);
+      if (active)
+        score = Math.max(score, conversationRiskScore(messageResults));
+      score = Math.max(score, storedScores[storedConversationId(key)] || 0);
       if (key) {
         const retained = conversationScores.get(key);
         // Only current evidence at least as strong renews a retained score.
         // Missing or weaker evidence must not extend an old warning forever.
         if (score > 0 && (!retained || score >= retained.score)) {
-          conversationScores.set(key, { score, expiresAt: now + riskRetentionMs });
+          conversationScores.set(key, {
+            score,
+            expiresAt: now + riskRetentionMs,
+          });
         }
         score = Math.max(score, conversationScores.get(key)?.score || 0);
-        if (conversationScores.size > 500) conversationScores.delete(conversationScores.keys().next().value);
+        if (conversationScores.size > 500)
+          conversationScores.delete(conversationScores.keys().next().value);
       }
-      flagConversation(row, score);
+      if (!key && score > 0) flagConversation(row, score);
+      if (active) activeScore = Math.max(activeScore, score);
+      if (key) flagConversation(row, score);
     }
+    updateChatFlag(activeScore);
     if (conversationScores.size) {
-      const nextExpiry = Math.min(...Array.from(conversationScores.values(), record => record.expiresAt));
-      expiryTimer = setTimeout(() => {
-        if (running) scanConversations([...currentResults.values()], knownRows);
-      }, Math.max(1, nextExpiry - Date.now()));
+      const nextExpiry = Math.min(
+        ...Array.from(
+          conversationScores.values(),
+          (record) => record.expiresAt,
+        ),
+      );
+      expiryTimer = setTimeout(
+        () => {
+          if (running)
+            scanConversations([...currentResults.values()], knownRows);
+        },
+        Math.max(1, nextExpiry - Date.now()),
+      );
     }
   }
   function warn(node, result) {
@@ -124,20 +452,46 @@
     if (result.score < threshold) return;
     const host = document.createElement("aside");
     host.dataset.fsdWarning = "true";
+    host.style.width = "420px";
     const root = host.attachShadow({ mode: "open" });
     const style = document.createElement("style");
-    style.textContent = ':host{display:block;margin:8px 0;font:13px/1.5 system-ui;color:#663a31}section{border:1px solid #e2b0a5;border-left:3px solid #bb5945;background:#fff6f2;border-radius:6px;padding:12px}header{display:flex;gap:10px;align-items:center}strong{flex:1}button{border:1px solid #dcc4bc;border-radius:4px;background:white;padding:4px 8px;color:#663a31;cursor:pointer}p{margin:8px 0 0}ul{padding-left:18px;margin:8px 0}small{color:#826a62}';
+    style.textContent =
+      ':host{display:block;max-width:100%;min-width:0;margin:8px 0;font:13px/1.5 system-ui;color:#343b38}*{box-sizing:border-box}section{max-width:100%;border:1px solid #d8dedb;border-left:3px solid var(--risk-color);background:#fff;border-radius:6px;padding:12px;overflow-wrap:anywhere}header{display:flex;gap:8px;align-items:center}strong{font-size:13px;color:var(--risk-color);text-transform:uppercase}strong:before{content:"";display:inline-block;width:8px;height:8px;margin-right:7px;border-radius:50%;background:currentColor}footer{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}button{font:600 12px/1.4 system-ui;border:1px solid #bfcac4;border-radius:4px;background:#fff;min-height:32px;padding:6px 10px;color:#343b38;cursor:pointer}button:hover{background:#f0f5f2}button:focus-visible{outline:2px solid #176348;outline-offset:2px}p{margin:6px 0}.summary{font-weight:600}.reasons{margin:10px 0 4px;font-weight:700}ul{padding-left:18px;margin:6px 0 8px}li{margin:4px 0}small{display:block;color:#637069}#details{border-top:1px solid #e0e6e2;margin-top:10px;padding-top:4px}[hidden]{display:none!important}';
+    host.style.setProperty(
+      "--risk-color",
+      globalThis.fsdRiskColor(result.score),
+    );
     const section = document.createElement("section");
     section.setAttribute("role", "alert");
     const header = document.createElement("header");
     const title = document.createElement("strong");
-    title.textContent = globalThis.fsdRiskLabel(result.score) + " risk";
+    title.textContent = globalThis.fsdRiskLabel(result.score) + " RISK MESSAGE";
     const hide = document.createElement("button");
-    hide.textContent = "Hide";
+    hide.type = "button";
+    hide.textContent = "Dismiss";
+    hide.title = "Dismiss this message warning";
     hide.addEventListener("click", () => host.remove());
-    header.append(title, hide);
+    header.append(title);
     const list = document.createElement("ul");
-    for (const signal of result.signals) { const li = document.createElement("li"); li.textContent = signal + ". " + globalThis.fsdSignalAction(signal); list.append(li); }
+    if (result.externalCommunication) {
+      const li = document.createElement("li");
+      li.textContent =
+        result.externalCommunication.explanation +
+        " Channels: " +
+        result.externalCommunication.channels.join(", ") +
+        ".";
+      list.append(li);
+    }
+    for (const request of result.sensitiveRequests) {
+      const li = document.createElement("li");
+      li.textContent = request.explanation + " " + request.action;
+      list.append(li);
+    }
+    for (const signal of result.signals) {
+      const li = document.createElement("li");
+      li.textContent = signal + ". " + globalThis.fsdSignalAction(signal);
+      list.append(li);
+    }
     for (const detail of result.linkDetails) {
       const li = document.createElement("li");
       li.textContent = detail;
@@ -145,124 +499,228 @@
       list.append(li);
     }
     const note = document.createElement("small");
-    note.textContent = "Pattern-based risk score, not proof of a scam. Check the order on Fiverr before acting.";
-    section.append(header, list, note);
+    note.textContent =
+      "Pattern-based risk score, not proof of a scam. Check the order on Fiverr before acting.";
+    const categories = document.createElement("p");
+    categories.textContent = globalThis
+      .fsdCategoryLabels(result.signals)
+      .join(". ");
+    categories.style.fontWeight = "600";
+    const summary = document.createElement("p");
+    summary.className = "summary";
+    summary.textContent = riskSummary(result);
+    const reasonsLabel = document.createElement("p");
+    reasonsLabel.className = "reasons";
+    reasonsLabel.textContent = "Reasons:";
+    const preview = document.createElement("ul");
+    for (const signal of result.signals.slice(0, 2)) {
+      const li = document.createElement("li");
+      li.textContent = signal;
+      preview.append(li);
+    }
+    const details = document.createElement("div");
+    details.id = "details";
+    details.hidden = true;
+    details.append(list, note);
+    const expand = document.createElement("button");
+    expand.type = "button";
+    expand.textContent = "View details";
+    expand.setAttribute("aria-expanded", "false");
+    expand.setAttribute("aria-controls", "details");
+    expand.addEventListener("click", () => {
+      details.hidden = !details.hidden;
+      expand.textContent = details.hidden ? "View details" : "Hide details";
+      expand.setAttribute("aria-expanded", String(!details.hidden));
+    });
+    const footer = document.createElement("footer");
+    footer.append(expand, hide);
+    section.append(
+      header,
+      summary,
+      categories,
+      reasonsLabel,
+      preview,
+      details,
+      footer,
+    );
     root.append(style, section);
     node.after(host);
     alerts.set(node, host);
   }
-  function scan(full = true) {
+  function scan(batch) {
     if (!running) return;
-    clearTimeout(timer);
-    timer = undefined;
+    const full = !batch;
+    if (noticePath !== location.pathname) {
+      noticePath = location.pathname;
+      clearPreviousNotice();
+      visibilityVersion++;
+    }
     const results = [];
-    const nodes = full ? new Set([...currentResults.keys(), ...document.querySelectorAll(selector)]) : [...pendingMessages];
-    const rows = full ? document.querySelectorAll(rowSelector) : new Set(pendingRows);
-    pendingMessages.clear();
-    pendingRows.clear();
+    const evidence = [];
+    const observations = [];
+    const nodes = full
+      ? new Set([
+          ...currentResults.keys(),
+          ...document.querySelectorAll(candidateSelector),
+        ])
+      : batch.messages;
+    const rows = full ? document.querySelectorAll(rowSelector) : batch.rows;
     for (const node of currentResults.keys()) {
-      if (!node.isConnected) { currentResults.delete(node); alerts.get(node)?.remove(); }
+      if (!node.isConnected) {
+        currentResults.delete(node);
+        visibleMessages.delete(node);
+        alerts.get(node)?.remove();
+      }
     }
     for (const row of knownRows) if (!row.isConnected) knownRows.delete(row);
     for (const node of nodes) {
       currentResults.delete(node);
-      if (!node.isConnected || !node.matches(selector) ||
-          node.closest('[data-fsd-warning],[data-direction="outgoing"],[data-is-own="true"],.outgoing,.message--outgoing,[contenteditable="true"]') ||
-          node.querySelector(selector) || node.closest(previewSelector) ||
-          !node.getClientRects().length || getComputedStyle(node).visibility === "hidden") {
+      visibleMessages.delete(node);
+      const message = globalThis.fsdMessageExtractor.extract(node);
+      if (!message) {
         alerts.get(node)?.remove();
         seen.delete(node);
         continue;
       }
-      const text = (node.innerText || node.textContent || "").trim();
-      const links = messageLinks(node);
-      if ((!text && !links.length) || text.length > 12000) {
-        alerts.get(node)?.remove();
-        seen.delete(node);
-        continue;
-      }
+      const { text, linkMetadata: links } = message;
+      observeMessage({ ...message, node });
       const linkKey = JSON.stringify(links);
       const cached = seen.get(node);
-      const changed = cached?.text !== text || cached?.linkKey !== linkKey;
-      const result = changed ? globalThis.fsdAnalyze(text, links) : cached.result;
+      const changed =
+        cached?.text !== text ||
+        cached?.linkKey !== linkKey ||
+        cached?.id !== message.id;
+      const result = changed
+        ? globalThis.fsdAnalyzeMessage(message)
+        : cached.result;
       currentResults.set(node, result);
       // Refresh presentation independently of analysis and result persistence.
       // Ordinary DOM updates leave dismissed warnings hidden.
-      if (changed || cached.threshold !== threshold) {
-        seen.set(node, { text, linkKey, result, threshold });
+      if (
+        changed ||
+        cached.threshold !== threshold ||
+        !alerts.get(node)?.isConnected
+      ) {
+        seen.set(node, { id: message.id, text, linkKey, result, threshold });
         warn(node, result);
       }
-      if (changed) results.push({ score: result.score, signals: result.signals, checkedAt: Date.now() }); // Metadata only, no link details.
+      if (changed)
+        results.push({
+          score: result.score,
+          signals: result.signals,
+          checkedAt: Date.now(),
+        }); // Metadata only, no link details.
+      if (changed && message.conversationId)
+        observations.push({
+          id: message.id,
+          conversationId: message.conversationId,
+          sender: message.sender,
+          senderType: "other",
+          text: message.text,
+          links: message.links,
+          riskScore: result.score,
+          riskLevel: result.risk,
+          categories: result.categories,
+          signals: result.signals,
+          matches: result.matches,
+        });
+      if (changed && result.score >= 61)
+        evidence.push({
+          id: message.id,
+          conversationId: message.conversationId,
+          sender: message.sender,
+          message: message.text,
+          links: message.links,
+          riskScore: result.score,
+          categories: result.categories,
+        });
     }
-    messageCount = currentResults.size;
-    if (!full && nodes.length) {
+    const status = statusResult();
+    const statusChanged =
+      status &&
+      (conversationStatus?.conversationId !== status.conversationId ||
+        conversationStatus?.text !== status.text);
+    conversationStatus = status;
+    if (statusChanged) {
+      results.push({
+        score: status.result.score,
+        signals: status.result.signals,
+        checkedAt: Date.now(),
+      });
+    }
+    messageCount = currentResults.size + (conversationStatus ? 1 : 0);
+    if (!full && nodes.size) {
       for (const row of knownRows) {
         const key = conversationKey(row);
-        if (row.matches('[aria-current="page"],[aria-selected="true"],.selected,.active') ||
-            row.querySelector('[aria-current="page"],[aria-selected="true"]') ||
-            key === "url:" + location.pathname + location.search) rows.add(row);
+        if (
+          row.matches(
+            '[aria-current="page"],[aria-selected="true"],.selected,.active,.active-contact',
+          ) ||
+          row.querySelector('[aria-current="page"],[aria-selected="true"]') ||
+          key === "url:" + location.pathname + location.search
+        )
+          rows.add(row);
       }
     }
-    scanConversations([...currentResults.values()], rows);
-    if (results.length) chrome.runtime.sendMessage({ type: "FSD_RESULTS", results }).catch(() => {});
+    scanConversations(
+      [
+        ...currentResults.values(),
+        ...(conversationStatus ? [conversationStatus.result] : []),
+      ],
+      rows,
+    );
+    if (results.length)
+      chrome.runtime
+        .sendMessage({ type: "FSD_RESULTS", results, evidence, observations })
+        .catch(() => {});
+    scheduleVisibility();
   }
-  function queueAffected(node, descendants = false) {
-    const element = node.nodeType === 1 ? node : node.parentElement;
-    if (!element || element.closest('[data-fsd-warning],[data-fsd-flag]')) return;
-    const message = element.closest(selector);
-    if (message) pendingMessages.add(message);
-    if (currentResults.has(element)) pendingMessages.add(element);
-    const row = element.closest(rowSelector);
-    if (row) pendingRows.add(row);
-    if (knownRows.has(element)) pendingRows.add(element);
-    if (descendants) {
-      for (const child of element.querySelectorAll(selector)) pendingMessages.add(child);
-      for (const child of element.querySelectorAll(rowSelector)) pendingRows.add(child);
-    }
-  }
-  const observer = new MutationObserver(records => {
-    if (!running) return;
-    let removed = false;
-    for (const record of records) {
-      if (record.type === "childList") {
-        const changed = [...record.addedNodes, ...record.removedNodes].filter(node =>
-          !(node.nodeType === 1 && node.matches('[data-fsd-warning],[data-fsd-flag]')));
-        if (!changed.length) continue;
-        queueAffected(record.target);
-        for (const node of record.addedNodes) queueAffected(node, true);
-        removed ||= record.removedNodes.length > 0;
-      } else queueAffected(record.target, record.type === "attributes");
-    }
-    // Keep the first deadline: continuous mutations cannot postpone processing.
-    if (timer === undefined && (removed || pendingMessages.size || pendingRows.size)) {
-      timer = setTimeout(() => scan(false), 150);
-    }
+  const detector = globalThis.fsdMessageDetector.create({
+    onBatch: scan,
+    hasMessage: (node) => currentResults.has(node),
+    hasRow: (node) => knownRows.has(node),
   });
+  const draftGuard = globalThis.fsdDraftGuard.create();
   function setRunning(enabled) {
     if (running === enabled) return;
     running = enabled;
-    observer.disconnect();
-    clearTimeout(timer);
-    timer = undefined;
-    pendingMessages.clear();
-    pendingRows.clear();
+    detector.stop();
+    draftGuard.stop();
     currentResults.clear();
+    visibleMessages.clear();
+    conversationStatus = null;
+    chatFlag?.remove();
+    chatFlag = undefined;
+    clearTimeout(visibilityTimer);
+    visibilityTimer = undefined;
+    visibilityVersion++;
+    clearPreviousNotice();
     knownRows.clear();
     clearTimeout(expiryTimer);
     if (running) {
       seen = new WeakMap();
-      observer.observe(document.body, {
-        subtree: true, childList: true, characterData: true, attributes: true,
-        attributeFilter: ["href", "data-conversation-id", "aria-current", "aria-selected", "class", "data-direction", "data-is-own", "hidden", "style", "contenteditable", "data-testid", "data-message-id"],
-      });
-      scan();
+      detector.start();
+      draftGuard.start();
     }
   }
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (message?.type === "FSD_STATUS") {
+      if (noticePath !== location.pathname) {
+        noticePath = location.pathname;
+        clearPreviousNotice();
+        visibilityVersion++;
+        if (!/^\/inbox\/[^/]+/.test(location.pathname))
+          conversationStatus = null;
+        if (running) scheduleVisibility();
+      }
+      const selectedConversation = /^\/inbox\/[^/]+/.test(location.pathname);
       respond({
-        running, supported: true, messageCount: running ? messageCount : 0,
+        running,
+        supported: true,
+        messageCount: running && selectedConversation ? messageCount : 0,
         conversationPage: /^\/inbox(?:\/|$)/.test(location.pathname),
+        selectedConversation,
+        conversation: globalThis.fsdConversationDetector?.inspect?.() || null,
       });
       return;
     }
@@ -270,18 +728,34 @@
   });
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === "local" && changes.fsd_threshold) {
-      threshold = Number.isInteger(changes.fsd_threshold.newValue) ? Math.max(1, Math.min(99, changes.fsd_threshold.newValue)) : 30;
+      threshold = Number.isInteger(changes.fsd_threshold.newValue)
+        ? Math.max(1, Math.min(100, changes.fsd_threshold.newValue))
+        : 30;
       if (running) scan();
     }
     if (area === "local" && changes.fsd_enabled) {
       storageVersion++;
       setRunning(changes.fsd_enabled.newValue === true);
     }
+    if (area === "local" && changes.fsd_vault_revision && running) {
+      scheduleVisibility();
+      void scanConversations(
+        [
+          ...currentResults.values(),
+          ...(conversationStatus ? [conversationStatus.result] : []),
+        ],
+        knownRows,
+      );
+    }
   });
   const version = storageVersion;
-  chrome.storage.local.get(["fsd_enabled", "fsd_threshold"]).then(data => {
-    threshold = Number.isInteger(data.fsd_threshold) ? Math.max(1, Math.min(99, data.fsd_threshold)) : 30;
-    if (version === storageVersion) setRunning(data.fsd_enabled === true);
-  }).catch(() => {});
+  chrome.storage.local
+    .get(["fsd_enabled", "fsd_threshold"])
+    .then((data) => {
+      threshold = Number.isInteger(data.fsd_threshold)
+        ? Math.max(1, Math.min(100, data.fsd_threshold))
+        : 30;
+      if (version === storageVersion) setRunning(data.fsd_enabled === true);
+    })
+    .catch(() => {});
 })();
-

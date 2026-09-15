@@ -4,6 +4,6 @@
 <body class="page"><header><strong>Message tester</strong><a href="home.html">Back to home</a></header><main>
 <h1>Check a message</h1><p>This uses exactly the same local rules as live monitoring. Text stays on this page.</p>
 <form id="tester"><label for="message">Message</label><textarea id="message" required maxlength="12000" rows="6" placeholder="Paste a message here"></textarea><div id="samples" class="row wrap"></div><button>Analyze message</button></form>
-<section aria-live="polite"><h2>Result</h2><strong id="risk">Enter a message to start</strong><ul id="signals"></ul><p id="explanation"></p></section>
+<section aria-live="polite"><h2>Result</h2><strong id="risk">Enter a message to start</strong><p id="categories" class="category-summary"></p><ul id="signals"></ul><p id="explanation"></p></section>
 <small>A low score does not guarantee safety. Keep payments on Fiverr and never share passwords or verification codes.</small>
-</main><script src="analyzer.js"></script><script src="tester.js"></script></body></html>
+</main><script src="link-scanner.js"></script><script src="sensitive-information.js"></script><script src="analyzer.js"></script><script src="tester.js"></script></body></html>
