@@ -1,0 +1,481 @@
+{
+  "version": 1,
+  "description": "Declarative contextual indicators for Fiverr scam detection. A keyword alone is not evidence of fraud; matching should require context and, where appropriate, combinations.",
+  "categories": [
+    {
+      "id": "off_platform_communication",
+      "name": "Off-platform communication",
+      "description": "A request to move the conversation away from Fiverr or use another communication service.",
+      "weight": 30,
+      "keywords": [
+        "whatsapp",
+        "telegram",
+        "discord",
+        "skype",
+        "signal",
+        "messenger"
+      ],
+      "phrases": [
+        "contact me outside fiverr",
+        "talk to me outside fiverr",
+        "continue this conversation elsewhere",
+        "message me on whatsapp",
+        "add me on telegram",
+        "move to telegram"
+      ],
+      "regexPatterns": [
+        {
+          "pattern": "\\b(?:contact|message|call|text|dm)\\s+(?:me|us)\\b.{0,45}\\b(?:whatsapp|telegram|discord|skype|signal)\\b",
+          "flags": "iu"
+        },
+        {
+          "pattern": "\\b(?:move|continue|take)\\b.{0,35}\\b(?:conversation|chat|communication)\\b.{0,35}\\b(?:outside|off|away from)\\b.{0,20}\\bfiverr\\b",
+          "flags": "iu"
+        }
+      ]
+    },
+    {
+      "id": "off_platform_payment",
+      "name": "Off-platform payment",
+      "description": "A request to pay outside Fiverr or send money directly to a person or external account.",
+      "weight": 35,
+      "keywords": [
+        "paypal",
+        "bank",
+        "wire",
+        "transfer",
+        "cashapp",
+        "venmo",
+        "usdt"
+      ],
+      "phrases": [
+        "pay outside fiverr",
+        "send payment directly to me",
+        "pay me directly",
+        "do not use fiverr payment",
+        "send it to my paypal",
+        "transfer the money to my bank"
+      ],
+      "regexPatterns": [
+        {
+          "pattern": "\\b(?:pay|send|transfer)\\b.{0,55}\\b(?:outside|off)[ -]?(?:of )?fiverr\\b",
+          "flags": "iu"
+        },
+        {
+          "pattern": "\\b(?:pay|send|transfer)\\b.{0,55}\\b(?:directly to me|to my (?:paypal|bank|cash ?app|venmo)|via paypal)\\b",
+          "flags": "iu"
+        }
+      ]
+    },
+    {
+      "id": "payment_request",
+      "name": "Suspicious payment request",
+      "description": "A request for money, a fee, deposit, or payment detail that needs contextual review.",
+      "weight": 25,
+      "keywords": [
+        "payment",
+        "fee",
+        "deposit",
+        "refund",
+        "invoice",
+        "release",
+        "charge"
+      ],
+      "phrases": [
+        "pay a verification fee",
+        "send a refundable deposit",
+        "pay before the order can start",
+        "payment is required to release",
+        "send money to verify",
+        "buy this for me"
+      ],
+      "regexPatterns": [
+        {
+          "pattern": "\\b(?:pay|send|transfer|deposit|purchase)\\b.{0,65}\\b(?:verification|registration|security|customs|release)\\s+fee\\b",
+          "flags": "iu"
+        },
+        {
+          "pattern": "\\b(?:payment|fee|deposit)\\b.{0,45}\\b(?:required|needed|due)\\b.{0,40}\\b(?:verify|release|activate|continue)\\b",
+          "flags": "iu"
+        }
+      ]
+    },
+    {
+      "id": "external_contact",
+      "name": "External contact details requested",
+      "description": "A request for a phone number, email address, social handle, or other contact detail outside normal Fiverr workflow.",
+      "weight": 25,
+      "keywords": [
+        "email",
+        "phone",
+        "number",
+        "handle",
+        "contact",
+        "instagram",
+        "facebook"
+      ],
+      "phrases": [
+        "send me your email address",
+        "share your phone number",
+        "give me your whatsapp number",
+        "what is your telegram handle",
+        "contact me by email"
+      ],
+      "regexPatterns": [
+        {
+          "pattern": "\\b(?:send|share|give|provide)\\b.{0,35}\\b(?:email address|phone number|whatsapp number|telegram handle|social media handle)\\b",
+          "flags": "iu"
+        },
+        { "pattern": "\\b(?:email|phone|call|text)\\s+me\\b", "flags": "iu" }
+      ]
+    },
+    {
+      "id": "fake_support",
+      "name": "Possible fake Fiverr support claim",
+      "description": "A message claiming to represent Fiverr support or security while requesting an action or sensitive information.",
+      "weight": 35,
+      "keywords": [
+        "support",
+        "security",
+        "representative",
+        "verification",
+        "official"
+      ],
+      "phrases": [
+        "this is fiverr support",
+        "message from fiverr security",
+        "i am a fiverr representative",
+        "official fiverr verification",
+        "fiverr security team"
+      ],
+      "regexPatterns": [
+        {
+          "pattern": "\\b(?:i am|i'm|we are|we're|this is)\\b.{0,25}\\bfiverr\\s+(?:support|security|representative|verification team)\\b",
+          "flags": "iu"
+        },
+        {
+          "pattern": "\\b(?:official message|message from)\\b.{0,25}\\bfiverr\\s+(?:support|security)\\b.{0,80}\\b(?:send|share|enter|pay|verify|click)\\b",
+          "flags": "iu"
+        }
+      ]
+    },
+    {
+      "id": "account_credentials",
+      "name": "Account credentials requested",
+      "description": "A request for passwords, one-time codes, passcodes, API keys, or other authentication secrets.",
+      "weight": 60,
+      "keywords": [
+        "password",
+        "otp",
+        "passcode",
+        "token",
+        "api key",
+        "verification code"
+      ],
+      "phrases": [
+        "send me your password",
+        "share the verification code",
+        "reply with the otp",
+        "enter your login details",
+        "provide your api key"
+      ],
+      "regexPatterns": [
+        {
+          "pattern": "\\b(?:send|share|give|provide|enter|reply with|paste)\\b.{0,65}\\b(?:password|otp|verification code|passcode|api key|access token|secret key)\\b",
+          "flags": "iu"
+        },
+        {
+          "pattern": "\\b(?:login|account|security)\\s+(?:details|credentials|code)\\b.{0,35}\\b(?:send|share|enter|provide)\\b",
+          "flags": "iu"
+        }
+      ]
+    },
+    {
+      "id": "suspicious_link",
+      "name": "Suspicious link context",
+      "description": "A link presented with a request to verify, log in, release payment, or provide information. The URL itself requires separate inspection.",
+      "weight": 30,
+      "keywords": ["link", "url", "website", "page", "click", "open"],
+      "phrases": [
+        "click this link to verify",
+        "open the payment page",
+        "login through this link",
+        "confirm your account here",
+        "use this website to receive payment"
+      ],
+      "regexPatterns": [
+        {
+          "pattern": "\\b(?:click|open|follow|use)\\b.{0,45}\\b(?:link|url|page|website)\\b.{0,65}\\b(?:verify|confirm|login|log in|payment|release)\\b",
+          "flags": "iu"
+        },
+        {
+          "pattern": "\\b(?:verify|confirm|secure|release)\\b.{0,45}\\b(?:account|payment|order)\\b.{0,45}\\b(?:link|page|website)\\b",
+          "flags": "iu"
+        }
+      ]
+    },
+    {
+      "id": "urgency",
+      "name": "Urgency or pressure",
+      "description": "Pressure to act immediately, avoid review, or face a threat. Urgency alone is not proof of a scam.",
+      "weight": 15,
+      "keywords": [
+        "urgent",
+        "immediately",
+        "now",
+        "quickly",
+        "deadline",
+        "suspended",
+        "blocked"
+      ],
+      "phrases": [
+        "act immediately",
+        "do this right now",
+        "last chance",
+        "your account will be suspended",
+        "do not tell anyone",
+        "you have only a few minutes"
+      ],
+      "regexPatterns": [
+        {
+          "pattern": "\\b(?:act|reply|pay|verify|click|send)\\b.{0,20}\\b(?:immediately|right now|within minutes|today)\\b",
+          "flags": "iu"
+        },
+        {
+          "pattern": "\\b(?:account|profile|order)\\b.{0,35}\\b(?:will be|has been|may be)\\b.{0,25}\\b(?:suspended|blocked|closed|cancelled)\\b",
+          "flags": "iu"
+        }
+      ]
+    },
+    {
+      "id": "job_offer_scam",
+      "name": "Suspicious job or work offer",
+      "description": "An unsolicited job, task, or earning offer paired with upfront payment, personal data, or off-platform contact.",
+      "weight": 25,
+      "keywords": [
+        "job",
+        "work",
+        "hiring",
+        "salary",
+        "commission",
+        "earning",
+        "opportunity"
+      ],
+      "phrases": [
+        "easy work from home",
+        "guaranteed income",
+        "we are hiring freelancers",
+        "pay a registration fee to start",
+        "earn money by completing tasks",
+        "send your documents to apply"
+      ],
+      "regexPatterns": [
+        {
+          "pattern": "\\b(?:job|work|hiring|opportunity)\\b.{0,70}\\b(?:registration fee|training fee|deposit|payment)\\b",
+          "flags": "iu"
+        },
+        {
+          "pattern": "\\b(?:guaranteed|easy|quick)\\b.{0,25}\\b(?:income|money|salary|commission)\\b.{0,70}\\b(?:whatsapp|telegram|email|pay|fee)\\b",
+          "flags": "iu"
+        }
+      ]
+    },
+    {
+      "id": "gift_card",
+      "name": "Gift card request",
+      "description": "A request to buy, send, or photograph gift cards or their redemption codes.",
+      "weight": 35,
+      "keywords": [
+        "gift card",
+        "itunes",
+        "google play",
+        "steam",
+        "amazon card",
+        "voucher"
+      ],
+      "phrases": [
+        "buy gift cards for me",
+        "send the gift card code",
+        "scratch off the voucher",
+        "pay with an apple gift card",
+        "send a picture of the card"
+      ],
+      "regexPatterns": [
+        {
+          "pattern": "\\b(?:buy|send|purchase|get)\\b.{0,35}\\b(?:gift cards?|itunes cards?|google play cards?|steam cards?|vouchers?)\\b",
+          "flags": "iu"
+        },
+        {
+          "pattern": "\\b(?:send|share|provide|photograph|take a picture of)\\b.{0,35}\\b(?:gift card|voucher)\\b.{0,35}\\b(?:code|number|back)\\b",
+          "flags": "iu"
+        }
+      ]
+    },
+    {
+      "id": "cryptocurrency",
+      "name": "Cryptocurrency payment request",
+      "description": "A request involving cryptocurrency, stablecoins, wallet transfers, or crypto verification payments.",
+      "weight": 35,
+      "keywords": [
+        "bitcoin",
+        "btc",
+        "ethereum",
+        "eth",
+        "crypto",
+        "usdt",
+        "usdc",
+        "wallet"
+      ],
+      "phrases": [
+        "send bitcoin to this wallet",
+        "pay in usdt",
+        "transfer crypto to verify",
+        "connect your crypto wallet",
+        "buy cryptocurrency for the payment"
+      ],
+      "regexPatterns": [
+        {
+          "pattern": "\\b(?:send|pay|transfer|buy|deposit)\\b.{0,55}\\b(?:bitcoin|btc|ethereum|eth|crypto|usdt|usdc)\\b",
+          "flags": "iu"
+        },
+        {
+          "pattern": "\\b(?:connect|verify|activate|fund)\\b.{0,35}\\b(?:crypto )?wallet\\b",
+          "flags": "iu"
+        }
+      ]
+    },
+    {
+      "id": "personal_information",
+      "name": "Sensitive personal information requested",
+      "description": "A request for identity documents, financial details, home address, or other sensitive personal data.",
+      "weight": 35,
+      "keywords": [
+        "passport",
+        "identity",
+        "address",
+        "bank account",
+        "card",
+        "cvv",
+        "social security"
+      ],
+      "phrases": [
+        "send your passport",
+        "provide your home address",
+        "share your bank details",
+        "send a picture of your id",
+        "give me your card number"
+      ],
+      "regexPatterns": [
+        {
+          "pattern": "\\b(?:send|share|provide|upload|confirm)\\b.{0,55}\\b(?:passport|national id|social security number|home address|bank account|card number|cvv)\\b",
+          "flags": "iu"
+        },
+        {
+          "pattern": "\\b(?:identity|financial|bank)\\s+(?:details|information)\\b.{0,35}\\b(?:send|share|provide|enter)\\b",
+          "flags": "iu"
+        }
+      ]
+    },
+    {
+      "id": "malicious_download",
+      "name": "Suspicious download or remote access",
+      "description": "A request to install software, open an executable, or grant remote access as part of the conversation.",
+      "weight": 35,
+      "keywords": [
+        "download",
+        "install",
+        "exe",
+        "zip",
+        "anydesk",
+        "teamviewer",
+        "remote access"
+      ],
+      "phrases": [
+        "download this software",
+        "install anydesk",
+        "open the exe file",
+        "give me remote access",
+        "run this tool to continue"
+      ],
+      "regexPatterns": [
+        {
+          "pattern": "\\b(?:download|install|open|run|launch)\\b.{0,45}\\b(?:anydesk|teamviewer|remote access|\\.exe|\\.zip|software|application)\\b",
+          "flags": "iu"
+        },
+        {
+          "pattern": "\\b(?:allow|grant|give)\\b.{0,35}\\b(?:remote access|control of your computer|screen access)\\b",
+          "flags": "iu"
+        }
+      ]
+    },
+    {
+      "id": "phishing",
+      "name": "Phishing or account verification",
+      "description": "A message that pairs a login, verification, or account threat with a link or request for credentials.",
+      "weight": 35,
+      "keywords": [
+        "verify",
+        "login",
+        "security check",
+        "confirm",
+        "account",
+        "suspended",
+        "blocked"
+      ],
+      "phrases": [
+        "verify your account",
+        "confirm your identity",
+        "your account has been suspended",
+        "complete the security check",
+        "login to receive payment"
+      ],
+      "regexPatterns": [
+        {
+          "pattern": "\\b(?:verify|confirm|restore|unlock)\\b.{0,55}\\b(?:your )?(?:account|identity|profile|payment)\\b.{0,55}\\b(?:link|page|website|login|password|code)\\b",
+          "flags": "iu"
+        },
+        {
+          "pattern": "\\b(?:account|profile)\\b.{0,45}\\b(?:suspended|blocked|closed)\\b.{0,80}\\b(?:verify|confirm|login)\\b",
+          "flags": "iu"
+        }
+      ]
+    }
+  ],
+  "combinations": [
+    {
+      "id": "off_platform_communication_plus_payment_request",
+      "name": "Off-platform communication with payment request",
+      "requires": ["off_platform_communication", "payment_request"],
+      "bonusScore": 25,
+      "description": "Moving the conversation away from Fiverr while requesting money is more suspicious than either indicator alone."
+    },
+    {
+      "id": "fake_support_plus_account_credentials",
+      "name": "Fake support with credential request",
+      "requires": ["fake_support", "account_credentials"],
+      "bonusScore": 35,
+      "description": "A support identity claim paired with a password or code request is a strong phishing indicator."
+    },
+    {
+      "id": "phishing_plus_urgency",
+      "name": "Phishing with urgency",
+      "requires": ["phishing", "urgency"],
+      "bonusScore": 25,
+      "description": "Account threats or verification demands paired with pressure to act quickly deserve additional scrutiny."
+    },
+    {
+      "id": "external_contact_plus_payment_request",
+      "name": "External contact with payment request",
+      "requires": ["external_contact", "payment_request"],
+      "bonusScore": 20,
+      "description": "A request for contact details paired with a payment demand increases the risk of off-platform fraud."
+    },
+    {
+      "id": "cryptocurrency_plus_payment_request",
+      "name": "Cryptocurrency with payment request",
+      "requires": ["cryptocurrency", "payment_request"],
+      "bonusScore": 25,
+      "description": "Crypto payment instructions paired with a money request deserve additional scrutiny."
+    }
+  ]
+}

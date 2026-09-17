@@ -9,9 +9,14 @@
     "lint": "eslint",
     "build:extension": "node scripts/build.cjs",
     "check:extension": "node scripts/check.cjs",
-    "test": "node tests/analyzer.cjs && node tests/extension-monitor.cjs && node tests/installed-extension.cjs"
+    "qa": "node tests/qa-dataset.cjs",
+    "test": "node tests/analyzer.cjs && node tests/pattern-matcher.cjs && node tests/scorer.cjs && node tests/url-detector.cjs && node tests/message-history.cjs && node tests/deleted-message-detector.cjs && node tests/extension-monitor.cjs && node tests/inbox-data.cjs && node tests/state-regressions.cjs && node tests/installed-extension.cjs"
   },
-  "dependencies": { "next": "16.3.4", "react": "19.2.8", "react-dom": "19.2.8" },
+  "dependencies": {
+    "next": "16.3.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",

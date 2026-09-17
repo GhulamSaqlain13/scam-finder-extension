@@ -11,7 +11,7 @@
   } = globalThis.fsdMessageDetector;
   const { links: messageLinks } = globalThis.fsdMessageExtractor;
   let running = false;
-  let threshold = 30;
+  let threshold = 21;
   let expiryTimer;
   let seen = new WeakMap();
   let storageVersion = 0;
@@ -25,6 +25,45 @@
   let visibilityVersion = 0;
   let previousNotice;
   let noticePath = location.pathname;
+  let scannedPath = location.pathname;
+  let conversationScanVersion = 0;
+  const dismissed = new Map();
+  const patternAlerts = new WeakMap();
+   let deletedMessageNotice;
+  let patternMatcher;
+  let patternScorer;
+  const patternReady = globalThis.fsdPatternMatcher
+    ?.load?.()
+    .then((matcher) => {
+      patternMatcher = matcher;
+      patternScorer = globalThis.fsdScorer?.create?.(matcher.catalog);
+      refreshPatternAlerts();
+    })
+    .catch(() => null);
+   const deletedMessageDetector = globalThis.fsdDeletedMessageDetector?.create?.({
+     onPreviouslyDetected: (result) => {
+       deletedMessageNotice?.remove();
+       deletedMessageNotice = globalThis.fsdAlertUI?.showPreviouslyDetected?.({
+         result,
+         onDismiss: () => {
+           deletedMessageNotice = undefined;
+         },
+       });
+     },
+   });
+  const warningIdentity = (message) =>
+    JSON.stringify([
+      message.conversationId,
+      message.id,
+      message.text,
+      message.links,
+      threshold,
+    ]);
+  function activeResults() {
+    return [...currentResults]
+      .filter(([node]) => visibleMessages.get(node)?.path === location.pathname)
+      .map(([, result]) => result);
+  }
   function clearPreviousNotice() {
     previousNotice?.remove();
     previousNotice = undefined;
@@ -68,6 +107,10 @@
       clearPreviousNotice();
       return;
     }
+    if (globalThis.fsdConversationDetector.isLoading(main)) {
+      clearPreviousNotice();
+      return;
+    }
     const visibleInPath = [...visibleMessages.values()].filter(
       (message) => message.path === path,
     );
@@ -81,7 +124,13 @@
     const conversationId =
       [...conversationIds][0] || lastConversationByPath.get(path) || path;
     const visibleIds = visibleInPath
-      .filter((message) => message.conversationId === conversationId)
+      .filter(
+        (message) =>
+          message.conversationId === conversationId && !message.deleted,
+      )
+      .map((message) => message.id);
+    const deletedIds = visibleInPath
+      .filter((message) => message.deleted)
       .map((message) => message.id);
     const observedIds = [...(observedMessages.get(conversationId) || [])];
     if (observedIds.length > 10000) {
@@ -94,6 +143,7 @@
         conversationId,
         visibleIds,
         observedIds,
+        deletedIds,
       })
       .then((response) => {
         if (
@@ -117,7 +167,9 @@
         const section = document.createElement("section");
         section.setAttribute("role", "status");
         const title = document.createElement("strong");
-        title.textContent = "SCAM ACTIVITY DETECTED";
+        title.textContent = response.deletedCount
+          ? "Previously flagged message was marked deleted"
+          : "Previously flagged message is not visible";
         const text = document.createElement("p");
         text.textContent =
           "Suspicious messages from this conversation are no longer visible on Fiverr.";
@@ -130,7 +182,9 @@
         const riskLabel = document.createElement("span");
         riskLabel.textContent = "Risk:";
         const riskValue = document.createElement("span");
-        riskValue.textContent = globalThis.fsdRiskLabel(response.maxRisk || 61);
+        riskValue.textContent = globalThis.fsdDisplayRisk(
+          response.maxRisk || 61,
+        );
         const note = document.createElement("p");
         note.textContent =
           "Messages can disappear for multiple reasons. This warning only appears because the missing message was already suspicious before it disappeared.";
@@ -162,11 +216,12 @@
   }
   function scheduleVisibility() {
     visibilityVersion++;
-    if (visibilityTimer === undefined)
-      visibilityTimer = setTimeout(updatePreviousNotice, 750);
+    clearTimeout(visibilityTimer);
+    visibilityTimer = setTimeout(updatePreviousNotice, 750);
   }
   const knownRows = new Set();
   const previewCache = new WeakMap();
+  const previewResults = new Map();
   const alerts = new WeakMap();
   // Conversation references and scores live only in this tab's memory.
   const conversationScores = new Map();
@@ -210,16 +265,32 @@
       .trim();
   }
   function rowPreview(row) {
-    const preview = row.querySelector(previewSelector);
+    if (globalThis.fsdConversationDetector.isLoading(row)) return null;
+    const preview = row.querySelector(previewSelector) ||
+      row.querySelector('.user-info > p:not(:first-child):not([data-fsd-flag])');
     if (preview)
       return {
         node: preview,
+        confirmed: true,
         text: compactText(preview),
         links: messageLinks(preview),
       };
-    const text = compactText(row);
+    // Contact rows can contain only an avatar, a name and a timestamp.
+    // Those are not message evidence and must never produce a green flag.
+    const copy = (row.querySelector('.user-info') || row).cloneNode(true);
+    for (const element of copy.querySelectorAll(
+      '[data-fsd-flag],.user-info > p:first-child,time,[data-testid="conversation-name"],[data-testid="username"],[class*="timestamp" i],[class*="avatar" i],button,svg',
+    ))
+      element.remove();
+    for (const link of copy.querySelectorAll('a[href*="/inbox/"]'))
+      if (!link.childElementCount) link.remove();
+    const text = compactText(copy);
     if (!text || text.length > 12000) return null;
-    return { node: row, text, links: messageLinks(row) };
+    // A bare row label has no identifiable preview container; it may be a name.
+    if (!copy.childElementCount && !unavailablePattern.test(text)) return null;
+    // A loaded fallback preview is still analyzable, even when no rule matches.
+    // Previously a zero score stayed "Checking" until the chat was opened.
+    return { node: row, text, links: messageLinks(row), confirmed: true };
   }
   function unavailableResult(text) {
     if (!unavailablePattern.test(text)) return null;
@@ -248,6 +319,9 @@
       : null;
   }
   function conversationKey(row) {
+    const dataKey = globalThis.fsdConversationData?.key(row);
+    if (dataKey) return dataKey;
+    if (row.dataset.conversationId) return "id:" + row.dataset.conversationId;
     const link = row.matches("a[href]")
       ? row
       : row.querySelector('a[href*="/inbox/"]');
@@ -259,15 +333,6 @@
         /* Fall back to an explicit conversation ID. */
       }
     }
-    if (row.dataset.conversationId) return "id:" + row.dataset.conversationId;
-    const participant = row.matches(".ce05uz8.contact,.ce05uz0.contact")
-      ? row.querySelector('.user-info p, .user-info [data-track-tag="text"], p')
-      : null;
-    if (participant) {
-      const name = compactText(participant).replace(/^@/, "").trim();
-      if (name)
-        return "url:/inbox/" + encodeURIComponent(name.replace(/\s+/g, "_"));
-    }
     return null;
   }
   function storedConversationId(key) {
@@ -275,7 +340,7 @@
     if (key.startsWith("url:")) return key.slice(4).split("?")[0];
     return key.startsWith("id:") ? key.slice(3) : key;
   }
-  function createFlag(score, attribute) {
+  function createFlag(score, attribute, pendingLabel) {
     const flag = document.createElement("span");
     flag.setAttribute(attribute, "true");
     flag.dataset.score = String(score);
@@ -285,10 +350,30 @@
       ':host{display:inline-flex;align-items:center;gap:7px;min-height:28px;margin:2px 6px;padding:4px 9px 4px 5px;border:1px solid var(--risk-border);border-radius:999px;background:var(--risk-bg);color:var(--risk-color);font:600 11px/1.2 system-ui;white-space:nowrap;vertical-align:middle;flex:0 0 auto}.flag-badge{position:relative;display:inline-block;width:20px;height:20px;color:var(--risk-color);vertical-align:middle;filter:drop-shadow(0 1px 1px rgba(0,0,0,.12))}.flag-badge:before{content:"";position:absolute;top:2px;left:2px;width:2px;height:16px;border-radius:1px;background:currentColor}.flag-badge:after{content:"";position:absolute;top:3px;left:4px;width:11px;height:8px;border:0;border-radius:1px 1px 1px 0;background:currentColor;clip-path:polygon(0 0,100% 0,78% 50%,100% 100%,0 100%)}.flag-badge:focus-visible{outline:2px solid #192c28;outline-offset:3px}.badge-label{display:inline-block}';
     const badge = document.createElement("span");
     badge.className = "flag-badge";
-    const badgeColor =
-      score > 60 ? "#b23b3b" : score > 20 ? "#b47716" : "#238052";
-    const badgeLabel =
-      score > 60 ? "Scam alert" : score > 20 ? "Needs caution" : "Safe";
+    const badgeColor = globalThis.fsdRiskColor(score);
+    const badgeLabel = pendingLabel || globalThis.fsdDisplayRisk(score);
+    flag.dataset.state = score === null ? (pendingLabel ? "unavailable" : "checking") : "checked";
+    flag.style.setProperty("--risk-color", badgeColor);
+    flag.style.setProperty(
+      "--risk-border",
+      score === null
+        ? "#d0d5dd"
+        : score > 60
+          ? "#e2baba"
+          : score > 20
+            ? "#e6d1a5"
+            : "#b9ddc7",
+    );
+    flag.style.setProperty(
+      "--risk-bg",
+      score === null
+        ? "#f8f9fb"
+        : score > 60
+          ? "#fff4f4"
+          : score > 20
+            ? "#fffaf0"
+            : "#f1fbf4",
+    );
     badge.style.setProperty("--risk-color", badgeColor);
     badge.style.setProperty(
       "--risk-border",
@@ -310,24 +395,38 @@
     return flag;
   }
   function flagConversation(row, score) {
+    const pendingLabel = score === null && !globalThis.fsdConversationDetector.isLoading(row)
+      ? "No preview" : undefined;
     const previous = flags.get(row);
-    if (previous?.isConnected && previous.dataset.score === String(score))
+    const available = globalThis.fsdConversationData?.get(row);
+    if (previous?.isConnected && previous.dataset.score === String(score) &&
+        previous.dataset.source === (available?.source || "DOM") &&
+        previous.dataset.coverage === (available?.kind || "preview") &&
+        previous.dataset.state === (score === null ? (pendingLabel ? "unavailable" : "checking") : "checked"))
       return;
     previous?.remove();
-    const flag = createFlag(score, "data-fsd-flag");
+    // SPA clones can copy our light-DOM host without its shadow root or WeakMap entry.
+    for (const stale of row.querySelectorAll('[data-fsd-flag]')) stale.remove();
+    const flag = createFlag(score, "data-fsd-flag", pendingLabel);
+    if (pendingLabel) flag.title = "Insufficient message data to determine risk. Waiting for available conversation data.";
     const target =
       row.querySelector(".user-info") ||
       row.querySelector('a[href*="/inbox/"]') ||
       row;
     target.append(flag);
     flags.set(row, flag);
+    flag.dataset.source = available?.source || "DOM";
+    flag.dataset.coverage = available?.kind || "preview";
+    if (available?.kind === "messages") flag.title = "Based on available messages, not a guarantee of safety.";
+    else if (score !== null) flag.title = "Based on preview or retained risk evidence; full conversation may not be available.";
+    globalThis.fsdConversationData?.log("UI updated:", { score, source: flag.dataset.source });
   }
   function updateChatFlag(score) {
     if (chatFlag?.isConnected && chatFlag.dataset.score === String(score))
       return;
     chatFlag?.remove();
     chatFlag = undefined;
-    if (!score) return;
+    if (!/^\/inbox\/[^/]+/.test(location.pathname)) return;
     const root =
       globalThis.fsdConversationDetector?.conversationRoot?.() || document.body;
     const avatar = root.querySelector('[data-track-tag="avatar"]');
@@ -342,6 +441,15 @@
   function startExtensionHeartbeat() {
     clearInterval(heartbeatTimer);
     heartbeatTimer = setInterval(() => {
+      if (running && scannedPath !== location.pathname) {
+        conversationScanVersion++;
+        currentResults.clear();
+        visibleMessages.clear();
+        conversationStatus = null;
+        chatFlag?.remove();
+        chatFlag = undefined;
+        scan();
+      }
       try {
         const result = chrome.runtime.sendMessage({ type: "FSD_HEARTBEAT" });
         result?.catch(() => {
@@ -361,45 +469,62 @@
   async function scanConversations(
     messageResults,
     candidates = document.querySelectorAll(rowSelector),
+    restoredRisk = null,
+    includeKnown = true,
   ) {
+    const version = ++conversationScanVersion;
+    const path = location.pathname;
     clearTimeout(expiryTimer);
     const now = Date.now();
     for (const [key, record] of conversationScores) {
       if (record.expiresAt <= now) conversationScores.delete(key);
     }
-    const rows = new Set();
-    for (const candidate of candidates) {
+    const rows = new Map();
+    for (const candidate of new Set([...candidates, ...(includeKnown ? knownRows : [])])) {
       if (!candidate.isConnected) continue;
       const row = candidate.closest(rowContainerSelector) || candidate;
-      // Keep the row wrapper: it contains both the link and preview in many inbox layouts.
       if (row.querySelector(rowContainerSelector)) continue;
       if (row.querySelector(selector) && !row.querySelector(previewSelector))
         continue;
-      rows.add(row);
+      rows.set(row, conversationKey(row));
       knownRows.add(row);
     }
-    const keys = [...rows].map(conversationKey).filter(Boolean);
-    let storedScores = {};
-    if (keys.length) {
-      try {
-        const response = await chrome.runtime.sendMessage({
-          type: "FSD_CONVERSATION_RISK",
-          conversationIds: [...new Set(keys.map(storedConversationId))],
-        });
-        storedScores = response?.scores || {};
-      } catch {
-        /* Local preview analysis remains available if storage is unavailable. */
-      }
-    }
-    let activeScore = 0;
-    for (const row of rows) {
-      const key = conversationKey(row);
+    globalThis.fsdConversationData?.request(rows.keys());
+    const activeId = globalThis.fsdConversationDetector.conversationId();
+    const ids = [
+      ...new Set(
+        [...rows.values()]
+          .map(storedConversationId)
+          .concat(activeId)
+          .filter(Boolean),
+      ),
+    ];
+    const storedScores = restoredRisk?.scores || {};
+    const storedRecords = restoredRisk?.records || {};
+    if (
+      !running ||
+      version !== conversationScanVersion ||
+      path !== location.pathname
+    )
+      return;
+    const freshScores = new Map();
+    const currentScore = messageResults.length
+      ? conversationRiskScore(messageResults)
+      : null;
+    let activeScore = currentScore;
+    if (activeId && currentScore !== null)
+      freshScores.set(activeId, currentScore);
+    if (storedScores[activeId] !== undefined)
+      activeScore = Math.max(activeScore || 0, storedScores[activeId]);
+    for (const [row, key] of rows) {
+      if (!row.isConnected || key !== conversationKey(row)) continue;
       if (rowKeys.get(row) !== key) {
         flags.get(row)?.remove();
         flags.delete(row);
         rowKeys.set(row, key);
       }
       let score = 0;
+      let checked = false;
       const preview = rowPreview(row);
       if (
         preview &&
@@ -412,64 +537,155 @@
           const linkKey = JSON.stringify(links);
           let cached = previewCache.get(preview.node);
           if (cached?.text !== text || cached?.linkKey !== linkKey) {
-            const accountStatus = unavailableResult(text);
+            const signature = JSON.stringify([text, linkKey]);
+            let result = previewResults.get(signature);
+            if (!result) {
+              result = unavailableResult(text) || globalThis.fsdAnalyze(text, links);
+              globalThis.fsdConversationData?.log("Data source:", "DOM");
+              globalThis.fsdConversationData?.log("Message data found:", true);
+              globalThis.fsdConversationData?.log("Messages analyzed:", 1);
+              globalThis.fsdConversationData?.log("Risk result:", result.score > 20 ? globalThis.fsdDisplayRisk(result.score) : "No preview (preview only)");
+              previewResults.set(signature, result);
+              if (previewResults.size > 100) previewResults.delete(previewResults.keys().next().value);
+            }
             cached = {
               text,
               linkKey,
-              result: accountStatus || globalThis.fsdAnalyze(text, links),
+              result,
             };
             previewCache.set(preview.node, cached);
           }
-          score = Math.max(score, cached.result.score);
+          score = cached.result.score;
+          // Benign snippets cannot establish that the available conversation is safe.
+          checked = score > 20;
         }
       }
       const active =
+        (key && storedConversationId(key) === activeId) ||
+        row.querySelector('a[href*="/inbox/"]')?.pathname === activeId ||
         row.matches(
           '[aria-current="page"],[aria-selected="true"],.selected,.active,.active-contact',
         ) ||
-        !!row.querySelector('[aria-current="page"],[aria-selected="true"]') ||
-        (key && key === "url:" + location.pathname + location.search);
-      if (active)
-        score = Math.max(score, conversationRiskScore(messageResults));
-      score = Math.max(score, storedScores[storedConversationId(key)] || 0);
+        !!row.querySelector('[aria-current="page"],[aria-selected="true"]');
+      if (active && currentScore !== null) {
+        checked = true;
+        score = Math.max(score, currentScore);
+      }
+      const available = globalThis.fsdConversationData?.get(row);
+      if (available?.score !== null && available?.score !== undefined) {
+        checked = true;
+        score = Math.max(score, available.score);
+      }
       if (key) {
-        const retained = conversationScores.get(key);
-        // Only current evidence at least as strong renews a retained score.
-        // Missing or weaker evidence must not extend an old warning forever.
-        if (score > 0 && (!retained || score >= retained.score)) {
-          conversationScores.set(key, {
-            score,
-            expiresAt: now + riskRetentionMs,
-          });
+        const id = storedConversationId(key);
+        if (checked) {
+          freshScores.set(id, score);
+          const retained = conversationScores.get(key);
+          if (!retained || score >= retained.score)
+            conversationScores.set(key, {
+              score,
+              expiresAt: now + riskRetentionMs,
+              coverage: (active && currentScore !== null) || available?.kind === "messages" ? "messages" : "preview",
+            });
         }
-        score = Math.max(score, conversationScores.get(key)?.score || 0);
+        const restored = storedRecords[id];
+        const retained = conversationScores.get(key);
+        if (
+          restored?.expiresAt > now &&
+          (!retained || restored.score > retained.score)
+        )
+          conversationScores.set(key, restored);
+        // Legacy zero-score preview caches do not prove message coverage.
+        checked ||= conversationScores.get(key)?.coverage === "messages" ||
+          (conversationScores.get(key)?.score || 0) > 20 || (storedScores[id] || 0) > 20;
+        score = Math.max(
+          score,
+          conversationScores.get(key)?.score || 0,
+          storedScores[id] || 0,
+        );
         if (conversationScores.size > 500)
           conversationScores.delete(conversationScores.keys().next().value);
-      }
-      if (!key && score > 0) flagConversation(row, score);
-      if (active) activeScore = Math.max(activeScore, score);
-      if (key) flagConversation(row, score);
+        flagConversation(row, checked ? score : null);
+      } else flagConversation(row, checked ? score : null);
+      if (active && checked) activeScore = Math.max(activeScore || 0, score);
     }
     updateChatFlag(activeScore);
-    if (conversationScores.size) {
-      const nextExpiry = Math.min(
-        ...Array.from(
-          conversationScores.values(),
-          (record) => record.expiresAt,
-        ),
-      );
+    const entries = restoredRisk ? [] : [...freshScores];
+    for (let offset = 0; offset < entries.length; offset += 500) {
+      const batch = entries.slice(offset, offset + 500);
+      chrome.runtime
+        .sendMessage({
+          type: "FSD_CONVERSATION_RISK",
+          conversationIds: batch.map(([id]) => id),
+          scores: batch.map(([, score]) => score),
+        })
+        .catch(() => {});
+    }
+    const expirations = [
+      ...conversationScores.values(),
+      ...Object.values(storedRecords),
+    ]
+      .map((record) => record.expiresAt)
+      .filter((value) => value > Date.now());
+    if (expirations.length)
       expiryTimer = setTimeout(
         () => {
-          if (running)
-            scanConversations([...currentResults.values()], knownRows);
+          if (running) void scanConversations(activeResults(), knownRows);
         },
-        Math.max(1, nextExpiry - Date.now()),
+        Math.max(1, Math.min(...expirations) - Date.now()),
       );
+    // Paint local results before waiting for the service worker/storage queue.
+    // A newer DOM scan always takes priority over an older lookup response.
+    if (!restoredRisk && ids.length) {
+      const restored = { scores: {}, records: {} };
+      try {
+        for (let offset = 0; offset < ids.length; offset += 500) {
+          const response = await chrome.runtime.sendMessage({
+            type: "FSD_CONVERSATION_RISK",
+            conversationIds: ids.slice(offset, offset + 500),
+          });
+          if (!running || version !== conversationScanVersion || path !== location.pathname) return;
+          Object.assign(restored.scores, response?.scores || {});
+          Object.assign(restored.records, response?.records || {});
+        }
+        if (Object.keys(restored.scores).length || Object.keys(restored.records).length)
+          void scanConversations(messageResults, rows.keys(), restored, includeKnown);
+      } catch {
+        /* Local flags remain usable while the background worker is unavailable. */
+      }
     }
   }
-  function warn(node, result) {
+  function warn(node, result, identity) {
+    if (globalThis.fsdAlertUI) {
+      const previous = alerts.get(node);
+      if (
+        previous?.isConnected &&
+        previous.dataset.fsdLevel === result.level &&
+        patternAlerts.get(node)?.score === result.score
+      )
+        return;
+      previous?.remove();
+      if (result.level !== "green" && result.score < threshold) {
+        alerts.delete(node);
+        return;
+      }
+      const host = globalThis.fsdAlertUI.show({
+        node,
+        result,
+        onDismiss:
+          result.level === "green"
+            ? undefined
+            : () => {
+                dismissed.set(identity, true);
+                if (dismissed.size > 1000)
+                  dismissed.delete(dismissed.keys().next().value);
+              },
+      });
+      if (host) alerts.set(node, host);
+      return;
+    }
     alerts.get(node)?.remove();
-    if (result.score < threshold) return;
+    if (result.score < threshold || dismissed.has(identity)) return;
     const host = document.createElement("aside");
     host.dataset.fsdWarning = "true";
     host.style.width = "420px";
@@ -485,12 +701,17 @@
     section.setAttribute("role", "alert");
     const header = document.createElement("header");
     const title = document.createElement("strong");
-    title.textContent = globalThis.fsdRiskLabel(result.score) + " RISK MESSAGE";
+    title.textContent = globalThis.fsdDisplayRisk(result.score) + " message";
     const hide = document.createElement("button");
     hide.type = "button";
     hide.textContent = "Dismiss";
     hide.title = "Dismiss this message warning";
-    hide.addEventListener("click", () => host.remove());
+    hide.addEventListener("click", () => {
+      dismissed.set(identity, true);
+      if (dismissed.size > 1000)
+        dismissed.delete(dismissed.keys().next().value);
+      host.remove();
+    });
     header.append(title);
     const list = document.createElement("ul");
     if (result.externalCommunication) {
@@ -528,7 +749,7 @@
     categories.style.fontWeight = "600";
     const summary = document.createElement("p");
     summary.className = "summary";
-    summary.textContent = riskSummary(result);
+    summary.textContent = result.summary || riskSummary(result);
     const reasonsLabel = document.createElement("p");
     reasonsLabel.className = "reasons";
     reasonsLabel.textContent = "Reasons:";
@@ -567,10 +788,77 @@
     node.after(host);
     alerts.set(node, host);
   }
+  function scorePatternMessage(message) {
+    if (!patternMatcher || !patternScorer) return null;
+    const patternResult = patternMatcher.match({ text: message.text });
+    patternResult.urlDetection = globalThis.fsdUrlDetector?.detect?.(
+      message.text,
+      message.linkMetadata || message.links || [],
+    );
+    return patternScorer.score(patternResult);
+  }
+  function displayResult(message, legacyResult) {
+    const scoredResult = scorePatternMessage(message);
+    const legacySignals = legacyResult.signals || [];
+    const legacyCategoryText = legacySignals.some((signal) => /password|verification code|sensitive information|card|bank/i.test(signal))
+      ? "Sensitive data request"
+      : globalThis.fsdCategoryLabels(legacySignals).join(". ");
+    const legacySummary = legacySignals.some((signal) => /password|verification code|phishing|login|identity/i.test(signal))
+      ? "This message may be a phishing attempt."
+      : riskSummary(legacyResult);
+    if (!scoredResult) {
+      return {
+        ...legacyResult,
+        level: legacyResult.score >= 60 ? "red" : legacyResult.score >= 30 ? "yellow" : "green",
+        reasons: legacySignals,
+        categories: globalThis.fsdCategoryLabels(legacyResult.signals),
+        categoryText: legacyCategoryText,
+        summary: legacySummary,
+      };
+    }
+    const categoryLabels = {
+      account_credentials: "Sensitive data request",
+      personal_information: "Sensitive data request",
+      external_contact: "External communication request",
+      off_platform_communication: "External communication request",
+      phishing: "Possible phishing",
+      fake_support: "Possible fake support",
+      payment_request: "Possible payment scam",
+      off_platform_payment: "Possible payment scam",
+      malicious_download: "Possible unsafe software",
+      urgency: "Pressure tactics",
+    };
+    const legacyLabels = globalThis.fsdCategoryLabels(legacyResult.signals);
+    const matchedLabels = scoredResult.categories.map((category) => categoryLabels[category]).filter(Boolean);
+    return {
+      ...scoredResult,
+      categoryText: [...new Set([legacyCategoryText, ...legacyLabels, ...matchedLabels].filter(Boolean))].join(". "),
+      summary: `${scoredResult.level === "red" ? "This message contains multiple suspicious indicators." : "This message contains potentially risky patterns."} ${legacySummary}`,
+    };
+  }
+  function refreshPatternAlerts() {
+    if (!running) return;
+    for (const node of currentResults.keys()) {
+      if (!node.isConnected) continue;
+      const message = globalThis.fsdMessageExtractor.extractMessage(node);
+      const result = message && displayResult(message, currentResults.get(node));
+      if (!result) continue;
+      patternAlerts.set(node, result);
+      warn(node, result, warningIdentity(message));
+    }
+  }
   function scan(batch) {
     if (!running) return;
-    const full = !batch;
-    if (noticePath !== location.pathname) {
+    let full = !batch;
+    if (scannedPath !== location.pathname) {
+      scannedPath = location.pathname;
+      full = true;
+      for (const node of currentResults.keys()) alerts.get(node)?.remove();
+      currentResults.clear();
+      visibleMessages.clear();
+      conversationStatus = null;
+      chatFlag?.remove();
+      chatFlag = undefined;
       noticePath = location.pathname;
       clearPreviousNotice();
       visibilityVersion++;
@@ -583,7 +871,7 @@
           ...currentResults.keys(),
           ...document.querySelectorAll(candidateSelector),
         ])
-      : batch.messages;
+      : new Set(batch.messages);
     const rows = full ? document.querySelectorAll(rowSelector) : batch.rows;
     for (const node of currentResults.keys()) {
       if (!node.isConnected) {
@@ -593,9 +881,20 @@
       }
     }
     for (const row of knownRows) if (!row.isConnected) knownRows.delete(row);
+    for (const [node] of visibleMessages)
+      if (!node.isConnected) visibleMessages.delete(node);
     for (const node of nodes) {
       currentResults.delete(node);
       visibleMessages.delete(node);
+      const deletedId = globalThis.fsdMessageDetector.deletedId(node);
+      if (deletedId) {
+        const conversationId =
+          globalThis.fsdConversationDetector.conversationId(node);
+        observeMessage({ node, id: deletedId, conversationId });
+        visibleMessages.get(node).deleted = true;
+        alerts.get(node)?.remove();
+        continue;
+      }
       const message = globalThis.fsdMessageExtractor.extract(node);
       if (!message) {
         alerts.get(node)?.remove();
@@ -609,11 +908,16 @@
       const changed =
         cached?.text !== text ||
         cached?.linkKey !== linkKey ||
-        cached?.id !== message.id;
+        cached?.id !== message.id ||
+        cached?.conversationId !== message.conversationId;
       const result = changed
         ? globalThis.fsdAnalyzeMessage(message)
         : cached.result;
       currentResults.set(node, result);
+      const alertResult = !changed && patternAlerts.has(node)
+        ? patternAlerts.get(node)
+        : displayResult(message, result);
+      patternAlerts.set(node, alertResult);
       // Refresh presentation independently of analysis and result persistence.
       // Ordinary DOM updates leave dismissed warnings hidden.
       if (
@@ -621,8 +925,15 @@
         cached.threshold !== threshold ||
         !alerts.get(node)?.isConnected
       ) {
-        seen.set(node, { id: message.id, text, linkKey, result, threshold });
-        warn(node, result);
+        seen.set(node, {
+          id: message.id,
+          conversationId: message.conversationId,
+          text,
+          linkKey,
+          result,
+          threshold,
+        });
+        warn(node, alertResult, warningIdentity(message));
       }
       if (changed)
         results.push({
@@ -644,6 +955,16 @@
           signals: result.signals,
           matches: result.matches,
         });
+      if (changed && globalThis.fsdMessageHistory?.saveMessage) {
+        globalThis.fsdMessageHistory.saveMessage({
+          id: message.id,
+          conversationId: message.conversationId,
+          riskLevel: alertResult.level,
+          score: alertResult.score,
+          categories: alertResult.categories,
+          detectedAt: Date.now(),
+        }).catch(() => {});
+      }
       if (changed && result.score >= 61)
         evidence.push({
           id: message.id,
@@ -655,7 +976,9 @@
           categories: result.categories,
         });
     }
-    const status = statusResult();
+    const status = globalThis.fsdConversationDetector.isLoading()
+      ? null
+      : statusResult();
     const statusChanged =
       status &&
       (conversationStatus?.conversationId !== status.conversationId ||
@@ -684,7 +1007,7 @@
     }
     scanConversations(
       [
-        ...currentResults.values(),
+        ...activeResults(),
         ...(conversationStatus ? [conversationStatus.result] : []),
       ],
       rows,
@@ -695,16 +1018,37 @@
         .catch(() => {});
     scheduleVisibility();
   }
+  const hasMessageObserver = Boolean(globalThis.fsdMessageObserver?.create);
   const detector = globalThis.fsdMessageDetector.create({
     onBatch: scan,
     hasMessage: (node) => currentResults.has(node),
     hasRow: (node) => knownRows.has(node),
+    observeMessages: true,
   });
+  const messageObserver = hasMessageObserver
+    ? globalThis.fsdMessageObserver.create({
+        // The primary detector owns added/edited message analysis. This
+        // observer only remembers removed messages for history lookup.
+        onMessageRemoved: (message) => {
+          const node = message.element;
+          currentResults.delete(node);
+          visibleMessages.delete(node);
+          alerts.get(node)?.remove();
+          deletedMessageDetector?.inspect?.(message).catch(() => {});
+          scheduleVisibility();
+        },
+      })
+    : { start() {}, stop() {} };
   const draftGuard = globalThis.fsdDraftGuard.create();
   function setRunning(enabled) {
     if (running === enabled) return;
     running = enabled;
+    conversationScanVersion++;
     detector.stop();
+    messageObserver.stop();
+    deletedMessageDetector?.reset?.();
+    deletedMessageNotice?.remove();
+    deletedMessageNotice = undefined;
     draftGuard.stop();
     currentResults.clear();
     visibleMessages.clear();
@@ -719,12 +1063,16 @@
     clearTimeout(expiryTimer);
     if (running) {
       seen = new WeakMap();
+      dismissed.clear();
+      globalThis.fsdConversationData?.start(ids => {
+        const affected = [...knownRows].filter(row => ids.has(conversationKey(row)));
+        if (running && affected.length) void scanConversations(activeResults(), affected, null, false);
+      });
       detector.start();
+      messageObserver.start();
+      globalThis.fsdMessageHistory?.removeOldMessages?.().catch(() => {});
       draftGuard.start();
-      setTimeout(() => {
-        if (running) scan();
-      }, 500);
-    }
+    } else globalThis.fsdConversationData?.stop();
   }
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (message?.type === "FSD_STATUS") {
@@ -750,10 +1098,14 @@
     if (message?.type === "FSD_SCAN" && running) scan();
   });
   chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes.fsd_cache_reset) {
+      conversationScanVersion++;
+      conversationScores.clear();
+    }
     if (area === "local" && changes.fsd_threshold) {
       threshold = Number.isInteger(changes.fsd_threshold.newValue)
         ? Math.max(1, Math.min(100, changes.fsd_threshold.newValue))
-        : 30;
+        : 21;
       if (running) scan();
     }
     if (area === "local" && changes.fsd_enabled) {
@@ -764,7 +1116,7 @@
       scheduleVisibility();
       void scanConversations(
         [
-          ...currentResults.values(),
+          ...activeResults(),
           ...(conversationStatus ? [conversationStatus.result] : []),
         ],
         knownRows,
@@ -777,7 +1129,7 @@
     .then((data) => {
       threshold = Number.isInteger(data.fsd_threshold)
         ? Math.max(1, Math.min(100, data.fsd_threshold))
-        : 30;
+        : 21;
       if (version === storageVersion) setRunning(data.fsd_enabled !== false);
     })
     .catch(() => {});

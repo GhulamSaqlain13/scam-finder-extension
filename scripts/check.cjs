@@ -5,6 +5,7 @@ const root = path.resolve(__dirname, "..");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8").replace(/^\uFEFF/, ""));
 const resources = [manifest.action.default_popup, manifest.options_page, manifest.background.service_worker, ...manifest.content_scripts.flatMap(c => c.js)];
 for (const resource of resources) if (!fs.existsSync(path.join(root, resource))) throw Error("Missing manifest resource: " + resource);
+for (const resource of manifest.web_accessible_resources?.flatMap(entry => entry.resources) || []) if (!fs.existsSync(path.join(root, resource))) throw Error("Missing web resource: " + resource);
 for (const file of fs.readdirSync(path.join(root, "extension"))) {
   const full = path.join(root, "extension", file);
   if (file.endsWith(".js")) cp.execFileSync(process.execPath, ["--check", full]);

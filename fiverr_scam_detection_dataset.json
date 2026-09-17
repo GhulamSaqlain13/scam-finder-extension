@@ -1,6 +1,13 @@
 {
-  "version": "1.0.0",
-  "description": "Starter Fiverr scam-detection message dataset for development, testing, and rule prototyping. Synthetic examples only; not a trained production dataset.",
+  "version": "2.1.0",
+  "description": "Production-scale synthetic dataset and feature weights for training, regex validation, and client-side scoring in Next.js/Chrome extensions.",
+  "organization_notes": [
+    "Development and QA dataset; not automatically loaded as extension detection rules.",
+    "Latest annotations are used for duplicate message text. Original documents are preserved in data/archive/fiverr-dataset-source-versions.json.",
+    "Older wording variants are retained as msg_101 and msg_102 with source references.",
+    "Risk labels and scores are preserved as supplied; they are not converted to detector thresholds.",
+    "Rule suggestions are merged by ID, retaining unique keywords; latest weights take precedence."
+  ],
   "labels": [
     "safe",
     "off_platform_contact",
@@ -22,44 +29,34 @@
     {
       "id": "msg_001",
       "text": "Can you deliver the logo by Friday? Please send the first draft here on Fiverr.",
-      "labels": [
-        "safe"
-      ],
+      "labels": ["safe"],
       "risk": "low",
-      "risk_score": 3,
-      "reason": "Normal project discussion with no suspicious request."
+      "risk_score": 2,
+      "reason": "Standard on-platform milestone query."
     },
     {
       "id": "msg_002",
       "text": "Please send me your WhatsApp number so we can continue this project there.",
-      "labels": [
-        "off_platform_contact"
-      ],
+      "labels": ["off_platform_contact"],
       "risk": "medium",
-      "risk_score": 55,
-      "reason": "Attempts to move communication away from Fiverr."
+      "risk_score": 58,
+      "reason": "Direct solicit to bypass Fiverr messaging."
     },
     {
       "id": "msg_003",
       "text": "Message my manager on Telegram @projectmanager before I place the order.",
-      "labels": [
-        "off_platform_contact",
-        "urgency_pressure"
-      ],
+      "labels": ["off_platform_contact", "urgency_pressure"],
       "risk": "medium",
-      "risk_score": 62,
-      "reason": "Moves communication to Telegram and adds pressure before ordering."
+      "risk_score": 64,
+      "reason": "Telegram redirection prior to transaction."
     },
     {
       "id": "msg_004",
       "text": "I already paid. Fiverr needs your email address before the payment can be released.",
-      "labels": [
-        "fake_payment",
-        "impersonation"
-      ],
+      "labels": ["fake_payment", "impersonation"],
       "risk": "high",
-      "risk_score": 82,
-      "reason": "Claims a platform payment process that should be verified inside Fiverr."
+      "risk_score": 85,
+      "reason": "Phishing lure extracting seller email under guise of payment processing."
     },
     {
       "id": "msg_005",
@@ -72,273 +69,805 @@
       ],
       "risk": "critical",
       "risk_score": 98,
-      "reason": "Requests financial information through an external verification flow."
+      "reason": "Direct harvesting of card credentials via lookalike gateway."
     },
     {
       "id": "msg_006",
       "text": "Send me the six digit code Fiverr just texted you so I can complete the order.",
+      "labels": ["otp_theft", "credential_theft", "impersonation"],
+      "risk": "critical",
+      "risk_score": 99,
+      "reason": "MFA hijacking vector."
+    },
+    {
+      "id": "msg_007",
+      "text": "Do not send anyone your password or OTP. Fiverr support will never ask you for it in chat.",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 1,
+      "reason": "Security guidance warning message."
+    },
+    {
+      "id": "msg_008",
+      "text": "Please send your Fiverr username and password so I can verify your seller profile.",
+      "labels": ["credential_theft", "impersonation"],
+      "risk": "critical",
+      "risk_score": 100,
+      "reason": "Plaintext credential solicitation."
+    },
+    {
+      "id": "msg_009",
+      "text": "I can pay you more if you accept USDT outside Fiverr.",
+      "labels": ["off_platform_payment", "crypto_payment"],
+      "risk": "high",
+      "risk_score": 89,
+      "reason": "Unregulated cryptocurrency bypass attempt."
+    },
+    {
+      "id": "msg_010",
+      "text": "Buy a $100 gift card and send me the code. I will reimburse you with the project payment.",
+      "labels": ["gift_card_payment", "advance_fee"],
+      "risk": "critical",
+      "risk_score": 97,
+      "reason": "Irreversible instrument theft advance-fee model."
+    },
+    {
+      "id": "msg_011",
+      "text": "You need to pay a $35 seller verification fee before Fiverr can release the order.",
+      "labels": ["advance_fee", "fake_payment", "impersonation"],
+      "risk": "critical",
+      "risk_score": 96,
+      "reason": "False administrative verification charge."
+    },
+    {
+      "id": "msg_012",
+      "text": "Download this ZIP file and run the app so you can see the project requirements.",
+      "labels": ["malicious_download"],
+      "risk": "high",
+      "risk_score": 82,
+      "reason": "Executable execution prompt masked as specifications."
+    },
+    {
+      "id": "msg_013",
+      "text": "Install AnyDesk and send me the access code. I will show you the task on my computer.",
+      "labels": ["remote_access"],
+      "risk": "critical",
+      "risk_score": 94,
+      "reason": "Remote monitoring and workstation intrusion attempt."
+    },
+    {
+      "id": "msg_014",
+      "text": "Your account will be suspended in 10 minutes unless you verify it using this link.",
+      "labels": ["urgency_pressure", "phishing_link", "impersonation"],
+      "risk": "critical",
+      "risk_score": 97,
+      "reason": "Artificial panic vector tied to external credential prompt."
+    },
+    {
+      "id": "msg_015",
+      "text": "Can you send the final files through Fiverr delivery when they are ready?",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 0,
+      "reason": "Standard on-platform fulfillment agreement."
+    },
+    {
+      "id": "msg_016",
+      "text": "What is your email? I need it to send the brand assets via Google Drive.",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 14,
+      "reason": "Contextual asset exchange without payment or token triggers."
+    },
+    {
+      "id": "msg_017",
+      "text": "Send me your email and card number so I can add you to our company payroll system.",
+      "labels": ["personal_financial_info", "credential_theft"],
+      "risk": "critical",
+      "risk_score": 98,
+      "reason": "Illegal extraction of banking instruments."
+    },
+    {
+      "id": "msg_018",
+      "text": "I cannot pay through Fiverr. Send me your PayPal address and I will pay directly.",
+      "labels": ["off_platform_payment"],
+      "risk": "high",
+      "risk_score": 88,
+      "reason": "Explicit off-platform transactional solicitation."
+    },
+    {
+      "id": "msg_019",
+      "text": "I attached a PDF with the project brief. Please review it and tell me your quote.",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 5,
+      "reason": "Legitimate brief sharing."
+    },
+    {
+      "id": "msg_020",
+      "text": "Click the payment confirmation link and log in again because your seller session expired.",
+      "labels": ["phishing_link", "credential_theft", "fake_payment"],
+      "risk": "critical",
+      "risk_score": 98,
+      "reason": "Session expiration pretext leading to credential harvester."
+    },
+    {
+      "id": "msg_021",
+      "text": "I need your bank account number and routing number before I can place the Fiverr order.",
+      "labels": ["personal_financial_info"],
+      "risk": "critical",
+      "risk_score": 96,
+      "reason": "Unsolicited routing and clearing detail extraction."
+    },
+    {
+      "id": "msg_022",
+      "text": "Can we have a Zoom call to discuss the scope? I will place the order on Fiverr first.",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 16,
+      "reason": "Third-party conference coordination anchored to platform payment."
+    },
+    {
+      "id": "msg_023",
+      "text": "Fiverr support here. We detected a problem with your account. Reply with your password to unlock it.",
+      "labels": ["impersonation", "credential_theft"],
+      "risk": "critical",
+      "risk_score": 100,
+      "reason": "Platform personnel impersonation."
+    },
+    {
+      "id": "msg_024",
+      "text": "Pay the customs fee first and I will release your $2,000 project payment afterward.",
+      "labels": ["advance_fee", "fake_payment"],
+      "risk": "critical",
+      "risk_score": 96,
+      "reason": "Escrow clearance extortion."
+    },
+    {
+      "id": "msg_025",
+      "text": "Can you create three thumbnails for my YouTube channel? My budget is $120.",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 1,
+      "reason": "Standard inquiry."
+    },
+    {
+      "id": "msg_026",
+      "text": "Scan this QR code to confirm your seller account and receive the payment.",
+      "labels": ["phishing_link", "fake_payment", "impersonation"],
+      "risk": "critical",
+      "risk_score": 96,
+      "reason": "Quishing attack to evade text URL sniffers."
+    },
+    {
+      "id": "msg_027",
+      "text": "I sent the requirements in the Fiverr order page. Let me know if anything is unclear.",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 0,
+      "reason": "Platform order fulfillment discussion."
+    },
+    {
+      "id": "msg_028",
+      "text": "Use this shortened bit.ly link to confirm your identity before we begin.",
+      "labels": ["phishing_link"],
+      "risk": "high",
+      "risk_score": 81,
+      "reason": "Masked redirection mechanism."
+    },
+    {
+      "id": "msg_029",
+      "text": "Before I order, send $20 to prove you are a real freelancer. I will send it back.",
+      "labels": ["advance_fee"],
+      "risk": "critical",
+      "risk_score": 95,
+      "reason": "Inverted advance-fee extortion."
+    },
+    {
+      "id": "msg_030",
+      "text": "Please keep all communication and payments on Fiverr for both of our protection.",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 0,
+      "reason": "Safe platform adherence prompt."
+    },
+    {
+      "id": "msg_031",
+      "text": "Reach me via W.h.a.t.s.A.p.p at +1-555-0192 because Fiverr chat doesn't allow video previews.",
+      "labels": ["off_platform_contact"],
+      "risk": "medium",
+      "risk_score": 62,
+      "reason": "Punctuation obfuscation bypass."
+    },
+    {
+      "id": "msg_032",
+      "text": "Here is the Figma link with the finalized design system components: figma.com/file/sample123",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 3,
+      "reason": "Whitelisted project domain resource."
+    },
+    {
+      "id": "msg_033",
+      "text": "ATTENTION SELLER: An order of $450 has been placed. Confirm your billing balance to accept funds: https://fiverr-order-release.auth-security.com",
       "labels": [
-        "otp_theft",
+        "fake_payment",
+        "phishing_link",
+        "impersonation",
+        "urgency_pressure"
+      ],
+      "risk": "critical",
+      "risk_score": 99,
+      "reason": "Typosquatted domain simulating payout."
+    },
+    {
+      "id": "msg_034",
+      "text": "I can only pay using Zelle or CashApp due to corporate accounting policies. Send your handle.",
+      "labels": ["off_platform_payment"],
+      "risk": "high",
+      "risk_score": 86,
+      "reason": "Payment circumvention using P2P apps."
+    },
+    {
+      "id": "msg_035",
+      "text": "Download the project brief from this password-protected archive: project-specs.scr (password: 1234).",
+      "labels": ["malicious_download"],
+      "risk": "critical",
+      "risk_score": 98,
+      "reason": "Screensaver/executable delivery inside password barrier."
+    },
+    {
+      "id": "msg_036",
+      "text": "Could you provide a revision for slide 4? The typography does not match the company brand book.",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 0,
+      "reason": "Routine editorial adjustment."
+    },
+    {
+      "id": "msg_037",
+      "text": "Fiverr Security Bot: Unusual login detected. Click here to confirm your identity within 1 hour to prevent account termination.",
+      "labels": ["impersonation", "urgency_pressure", "phishing_link"],
+      "risk": "critical",
+      "risk_score": 98,
+      "reason": "Coercive administrative threat vector."
+    },
+    {
+      "id": "msg_038",
+      "text": "Add me on Skype: live:.cid.884930219 for technical architecture alignment before kickoff.",
+      "labels": ["off_platform_contact"],
+      "risk": "medium",
+      "risk_score": 57,
+      "reason": "Off-platform voice chat diversion."
+    },
+    {
+      "id": "msg_039",
+      "text": "I'm sending an overpayment of $1,200 instead of $200. Please forward the remaining $1,000 to my supplier via wire transfer.",
+      "labels": ["fake_payment", "advance_fee", "personal_financial_info"],
+      "risk": "critical",
+      "risk_score": 100,
+      "reason": "Check/wire overpayment laundering trick."
+    },
+    {
+      "id": "msg_040",
+      "text": "Please share your GitHub username so I can add you as a collaborator to the private repository.",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 5,
+      "reason": "Authentic developer tool coordination."
+    },
+    {
+      "id": "msg_041",
+      "text": "I uploaded the contract requirements as an image. Scan the barcode in the corner to view the NDA doc.",
+      "labels": ["phishing_link", "off_platform_contact"],
+      "risk": "high",
+      "risk_score": 89,
+      "reason": "Quishing bridge."
+    },
+    {
+      "id": "msg_042",
+      "text": "To clear anti-money-laundering (AML) checks, you must purchase a $50 prepaid card to prove account residency.",
+      "labels": ["advance_fee", "gift_card_payment", "impersonation"],
+      "risk": "critical",
+      "risk_score": 97,
+      "reason": "Fraudulent regulatory compliance claim."
+    },
+    {
+      "id": "msg_043",
+      "text": "Can we set up an order extension for 3 days? The video rendering is taking longer than expected.",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 0,
+      "reason": "Native delivery date extension workflow."
+    },
+    {
+      "id": "msg_044",
+      "text": "Fiverr Finance: New policy requires all sellers to maintain a linked credit card with at least $300 balance to accept orders.",
+      "labels": ["impersonation", "fake_payment", "personal_financial_info"],
+      "risk": "critical",
+      "risk_score": 96,
+      "reason": "Card balance extraction exploit."
+    },
+    {
+      "id": "msg_045",
+      "text": "Let's connect on Google Meet tomorrow at 10 AM EST. I will send the calendar invite via Fiverr chat.",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 10,
+      "reason": "Legitimate client conference alignment."
+    },
+    {
+      "id": "msg_046",
+      "text": "URGENT: I sent an official email from support@fiverr-resolution-center.net. Read it and reply immediately with your phone number.",
+      "labels": ["impersonation", "urgency_pressure", "off_platform_contact"],
+      "risk": "critical",
+      "risk_score": 95,
+      "reason": "Spoofed official domain communications."
+    },
+    {
+      "id": "msg_047",
+      "text": "I work for an investment firm. We require you to open a testing wallet on this web3 exchange to receive escrow: bit-dex-fiverr.io",
+      "labels": ["crypto_payment", "phishing_link", "off_platform_payment"],
+      "risk": "critical",
+      "risk_score": 95,
+      "reason": "Crypto-wallet drainer lure."
+    },
+    {
+      "id": "msg_048",
+      "text": "The audio sync on the final render is clean. Thanks for the quick turnaround!",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 0,
+      "reason": "Routine client review positive closure."
+    },
+    {
+      "id": "msg_049",
+      "text": "Download TeamViewer QuickSupport so our engineer can configure your local node environment for this task.",
+      "labels": ["remote_access"],
+      "risk": "critical",
+      "risk_score": 94,
+      "reason": "Workstation takeover via screen/remote access."
+    },
+    {
+      "id": "msg_050",
+      "text": "Can I see previous samples of UI/UX dashboards you built for SaaS applications?",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 1,
+      "reason": "Portfolio inquiry."
+    },
+    {
+      "id": "msg_051",
+      "text": "Check out my profile photo, my contact info is written there so we can bypass the high 20% platform commission.",
+      "labels": ["off_platform_contact", "off_platform_payment"],
+      "risk": "high",
+      "risk_score": 87,
+      "reason": "Steganographic avoidance of text monitoring."
+    },
+    {
+      "id": "msg_052",
+      "text": "Your account requires an immediate payout update. Provide your full CVV and expiration date for card tokenization.",
+      "labels": [
+        "credential_theft",
+        "personal_financial_info",
+        "impersonation"
+      ],
+      "risk": "critical",
+      "risk_score": 100,
+      "reason": "Financial security code theft."
+    },
+    {
+      "id": "msg_053",
+      "text": "I noticed the zip archive you sent is corrupted. Could you please re-upload the raw .ai source files?",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 2,
+      "reason": "Benign design file delivery correction."
+    },
+    {
+      "id": "msg_054",
+      "text": "I work for Fiverr Trust & Safety. You have violated Section 4 TOS. Paste the token link sent to your phone to appeal immediately.",
+      "labels": ["impersonation", "otp_theft", "urgency_pressure"],
+      "risk": "critical",
+      "risk_score": 99,
+      "reason": "Account access compromise through fear manipulation."
+    },
+    {
+      "id": "msg_055",
+      "text": "Kindly send your billing email address. The Fiverr checkout gateway asks me for the seller email before initiating payment.",
+      "labels": ["fake_payment", "impersonation"],
+      "risk": "high",
+      "risk_score": 86,
+      "reason": "Pretext to trigger spoofed delivery confirmation emails."
+    },
+    {
+      "id": "msg_056",
+      "text": "Are you comfortable translating technical legal contracts from French to English within 48 hours?",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 1,
+      "reason": "Standard service offering question."
+    },
+    {
+      "id": "msg_057",
+      "text": "Due to regional restrictions on my business account, I must pay via Payoneer direct transfer. Provide your payee ID.",
+      "labels": ["off_platform_payment"],
+      "risk": "high",
+      "risk_score": 83,
+      "reason": "Off-platform payment routing."
+    },
+    {
+      "id": "msg_058",
+      "text": "I've sent an initial offer of $50 as discussed in the direct messages. Let me know if you accept!",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 0,
+      "reason": "Native offer acceptance notice."
+    },
+    {
+      "id": "msg_059",
+      "text": "Open this Excel macro-enabled sheet (.xlsm) to inspect the data points for the automation script: data_update.xlsm",
+      "labels": ["malicious_download"],
+      "risk": "high",
+      "risk_score": 85,
+      "reason": "Macro delivery weaponization vector."
+    },
+    {
+      "id": "msg_060",
+      "text": "Please provide your tax ID / SSN so my accountant can issue you an external Form 1099 before I hire you.",
+      "labels": ["personal_financial_info"],
+      "risk": "critical",
+      "risk_score": 93,
+      "reason": "Identity theft through personal tax id gathering."
+    },
+    {
+      "id": "msg_061",
+      "text": "Join my server on D-i-s-c-o-r-d: discord.gg/fake-invite to talk to the stakeholders directly.",
+      "labels": ["off_platform_contact"],
+      "risk": "medium",
+      "risk_score": 62,
+      "reason": "Hyphenated keyword evasion routing off-site."
+    },
+    {
+      "id": "msg_062",
+      "text": "Can you configure our AWS IAM roles? We will share an authenticated session credential through an encrypted channel.",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 12,
+      "reason": "DevOps engagement scoping."
+    },
+    {
+      "id": "msg_063",
+      "text": "Dear user, you received an order of $1,500! To claim your payment enter your card verification code here: fiverr-payouts-auth.online",
+      "labels": [
+        "fake_payment",
+        "phishing_link",
         "credential_theft",
         "impersonation"
       ],
       "risk": "critical",
       "risk_score": 99,
-      "reason": "Requests a one-time verification code."
+      "reason": "Phantom escrow combined with payment credential phishing."
     },
     {
-      "id": "msg_007",
-      "text": "Do not send anyone your password or OTP. Fiverr support will never ask you for it in chat.",
-      "labels": [
-        "safe"
-      ],
-      "risk": "low",
-      "risk_score": 2,
-      "reason": "Warning against credential sharing rather than requesting credentials."
-    },
-    {
-      "id": "msg_008",
-      "text": "Please send your Fiverr username and password so I can verify your seller profile.",
-      "labels": [
-        "credential_theft",
-        "impersonation"
-      ],
-      "risk": "critical",
-      "risk_score": 100,
-      "reason": "Direct credential theft request."
-    },
-    {
-      "id": "msg_009",
-      "text": "I can pay you more if you accept USDT outside Fiverr.",
-      "labels": [
-        "off_platform_payment",
-        "crypto_payment"
-      ],
-      "risk": "high",
-      "risk_score": 88,
-      "reason": "Attempts to move payment off platform and use cryptocurrency."
-    },
-    {
-      "id": "msg_010",
-      "text": "Buy a $100 gift card and send me the code. I will reimburse you with the project payment.",
-      "labels": [
-        "gift_card_payment",
-        "advance_fee"
-      ],
+      "id": "msg_064",
+      "text": "I will buy 10 of your highest gigs right now if you kick back 20% to my Western Union account first.",
+      "labels": ["advance_fee", "off_platform_payment"],
       "risk": "critical",
       "risk_score": 97,
-      "reason": "Gift card payment and reimbursement scam pattern."
+      "reason": "Kickback advance-fee bait."
     },
     {
-      "id": "msg_011",
-      "text": "You need to pay a $35 seller verification fee before Fiverr can release the order.",
-      "labels": [
-        "advance_fee",
-        "fake_payment",
-        "impersonation"
-      ],
-      "risk": "critical",
-      "risk_score": 96,
-      "reason": "Requests an advance fee while impersonating a platform process."
-    },
-    {
-      "id": "msg_012",
-      "text": "Download this ZIP file and run the app so you can see the project requirements.",
-      "labels": [
-        "malicious_download"
-      ],
-      "risk": "high",
-      "risk_score": 80,
-      "reason": "Encourages running an unknown downloaded application."
-    },
-    {
-      "id": "msg_013",
-      "text": "Install AnyDesk and send me the access code. I will show you the task on my computer.",
-      "labels": [
-        "remote_access"
-      ],
-      "risk": "critical",
-      "risk_score": 94,
-      "reason": "Requests remote-access software credentials."
-    },
-    {
-      "id": "msg_014",
-      "text": "Your account will be suspended in 10 minutes unless you verify it using this link.",
-      "labels": [
-        "urgency_pressure",
-        "phishing_link",
-        "impersonation"
-      ],
-      "risk": "critical",
-      "risk_score": 97,
-      "reason": "Threat-based urgency combined with an external verification link."
-    },
-    {
-      "id": "msg_015",
-      "text": "Can you send the final files through Fiverr delivery when they are ready?",
-      "labels": [
-        "safe"
-      ],
-      "risk": "low",
-      "risk_score": 1,
-      "reason": "Normal platform-safe workflow."
-    },
-    {
-      "id": "msg_016",
-      "text": "What is your email? I need it for the brand guidelines document.",
-      "labels": [
-        "safe"
-      ],
-      "risk": "low",
-      "risk_score": 15,
-      "reason": "Could be legitimate depending on context; no payment or credential request."
-    },
-    {
-      "id": "msg_017",
-      "text": "Send me your email and card number so I can add you to our company payroll system.",
-      "labels": [
-        "personal_financial_info",
-        "credential_theft"
-      ],
-      "risk": "critical",
-      "risk_score": 98,
-      "reason": "Requests sensitive financial information."
-    },
-    {
-      "id": "msg_018",
-      "text": "I cannot pay through Fiverr. Send me your PayPal address and I will pay directly.",
-      "labels": [
-        "off_platform_payment"
-      ],
-      "risk": "high",
-      "risk_score": 86,
-      "reason": "Explicit request to bypass Fiverr payment."
-    },
-    {
-      "id": "msg_019",
-      "text": "I attached a PDF with the project brief. Please review it and tell me your quote.",
-      "labels": [
-        "safe"
-      ],
-      "risk": "low",
-      "risk_score": 8,
-      "reason": "Normal project attachment behavior."
-    },
-    {
-      "id": "msg_020",
-      "text": "Click the payment confirmation link and log in again because your seller session expired.",
-      "labels": [
-        "phishing_link",
-        "credential_theft",
-        "fake_payment"
-      ],
-      "risk": "critical",
-      "risk_score": 98,
-      "reason": "External login request tied to payment confirmation."
-    },
-    {
-      "id": "msg_021",
-      "text": "I need your bank account number and routing number before I can place the Fiverr order.",
-      "labels": [
-        "personal_financial_info"
-      ],
-      "risk": "critical",
-      "risk_score": 95,
-      "reason": "Requests unnecessary banking information."
-    },
-    {
-      "id": "msg_022",
-      "text": "Can we have a Zoom call to discuss the scope? I will place the order on Fiverr first.",
-      "labels": [
-        "safe"
-      ],
-      "risk": "low",
-      "risk_score": 18,
-      "reason": "External meeting request but payment remains on platform and context appears legitimate."
-    },
-    {
-      "id": "msg_023",
-      "text": "Fiverr support here. We detected a problem with your account. Reply with your password to unlock it.",
-      "labels": [
-        "impersonation",
-        "credential_theft"
-      ],
-      "risk": "critical",
-      "risk_score": 100,
-      "reason": "Platform impersonation combined with password theft."
-    },
-    {
-      "id": "msg_024",
-      "text": "Pay the customs fee first and I will release your $2,000 project payment afterward.",
-      "labels": [
-        "advance_fee",
-        "fake_payment"
-      ],
-      "risk": "critical",
-      "risk_score": 96,
-      "reason": "Advance-fee scam pattern."
-    },
-    {
-      "id": "msg_025",
-      "text": "Can you create three thumbnails for my YouTube channel? My budget is $120.",
-      "labels": [
-        "safe"
-      ],
-      "risk": "low",
-      "risk_score": 2,
-      "reason": "Normal project inquiry."
-    },
-    {
-      "id": "msg_026",
-      "text": "Scan this QR code to confirm your seller account and receive the payment.",
-      "labels": [
-        "phishing_link",
-        "fake_payment",
-        "impersonation"
-      ],
-      "risk": "critical",
-      "risk_score": 96,
-      "reason": "QR-based verification request tied to payment."
-    },
-    {
-      "id": "msg_027",
-      "text": "I sent the requirements in the Fiverr order page. Let me know if anything is unclear.",
-      "labels": [
-        "safe"
-      ],
-      "risk": "low",
-      "risk_score": 1,
-      "reason": "Normal on-platform communication."
-    },
-    {
-      "id": "msg_028",
-      "text": "Use this shortened link to confirm your identity before we begin.",
-      "labels": [
-        "phishing_link"
-      ],
-      "risk": "high",
-      "risk_score": 79,
-      "reason": "Identity verification through an unexplained external shortened link."
-    },
-    {
-      "id": "msg_029",
-      "text": "Before I order, send $20 to prove you are a real freelancer. I will send it back.",
-      "labels": [
-        "advance_fee"
-      ],
-      "risk": "critical",
-      "risk_score": 95,
-      "reason": "Requests money from the seller before placing an order."
-    },
-    {
-      "id": "msg_030",
-      "text": "Please keep all communication and payments on Fiverr for both of our protection.",
-      "labels": [
-        "safe"
-      ],
+      "id": "msg_065",
+      "text": "The client approved the final Figma prototypes. Please push the changes to production.",
+      "labels": ["safe"],
       "risk": "low",
       "risk_score": 0,
-      "reason": "Encourages safe platform behavior."
+      "reason": "Normal production release message."
+    },
+    {
+      "id": "msg_066",
+      "text": "I am traveling and don't have internet access for Fiverr. Please text my cell at +44-7700-900077 immediately.",
+      "labels": ["off_platform_contact", "urgency_pressure"],
+      "risk": "medium",
+      "risk_score": 65,
+      "reason": "Fabricated accessibility limits to divert to SMS."
+    },
+    {
+      "id": "msg_067",
+      "text": "Security Alert: Verify your linked phone number by telling me the numeric PIN sent to your device right now.",
+      "labels": ["otp_theft", "impersonation", "urgency_pressure"],
+      "risk": "critical",
+      "risk_score": 99,
+      "reason": "Social engineering to intercept SMS PIN."
+    },
+    {
+      "id": "msg_068",
+      "text": "Can you provide the raw footage in ProRes 422 format? We will supply a Dropbox link for the upload.",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 6,
+      "reason": "Legitimate high-resolution media workflow."
+    },
+    {
+      "id": "msg_069",
+      "text": "The contract requires our company proprietary viewer: setup.exe. Run it on Windows 10/11 to sign.",
+      "labels": ["malicious_download"],
+      "risk": "critical",
+      "risk_score": 97,
+      "reason": "Executable disguised as platform agreement tool."
+    },
+    {
+      "id": "msg_070",
+      "text": "I sent $500 via bank draft, but your bank requires you to deposit $50 into this guarantee fund to clear the transaction.",
+      "labels": ["advance_fee", "fake_payment"],
+      "risk": "critical",
+      "risk_score": 98,
+      "reason": "Classic clearance deposit extortion."
+    },
+    {
+      "id": "msg_071",
+      "text": "Could you provide a breakdown of hours spent on the database migration?",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 0,
+      "reason": "Transparent service accounting question."
+    },
+    {
+      "id": "msg_072",
+      "text": "Find me on We-Chat ID: dev_buyer_01 so my team can interview you before placing the contract.",
+      "labels": ["off_platform_contact"],
+      "risk": "medium",
+      "risk_score": 59,
+      "reason": "Circumvention of communication channel."
+    },
+    {
+      "id": "msg_073",
+      "text": "Fiverr Notification: Your payout is paused due to unverified tax identification. Click here to confirm identity: secure-fiverr-kyc.com",
+      "labels": ["impersonation", "phishing_link", "personal_financial_info"],
+      "risk": "critical",
+      "risk_score": 98,
+      "reason": "Identity theft via fake KYC portal."
+    },
+    {
+      "id": "msg_074",
+      "text": "I can only process payments using direct Bitcoin transfer to your public address. No credit cards.",
+      "labels": ["off_platform_payment", "crypto_payment"],
+      "risk": "high",
+      "risk_score": 86,
+      "reason": "Unapproved settlement methods."
+    },
+    {
+      "id": "msg_075",
+      "text": "Please sign the mutual NDA attached in the order files and return the signed scan here.",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 2,
+      "reason": "Standard on-platform business operations."
+    },
+    {
+      "id": "msg_076",
+      "text": "Give me your remote screen connection via RustDesk so I can show you the software bug in real-time.",
+      "labels": ["remote_access"],
+      "risk": "critical",
+      "risk_score": 93,
+      "reason": "Third-party remote device takeover."
+    },
+    {
+      "id": "msg_077",
+      "text": "I deposited the funds! Check this screenshot: prntscr.com/fakeimage-auth-check showing platform validation.",
+      "labels": ["fake_payment", "phishing_link"],
+      "risk": "high",
+      "risk_score": 84,
+      "reason": "Phishing-adjacent link masquerading as payment receipt screenshot."
+    },
+    {
+      "id": "msg_078",
+      "text": "Can you provide the translation in both American English and British English variants?",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 0,
+      "reason": "Localization scope clarification."
+    },
+    {
+      "id": "msg_079",
+      "text": "URGENT ORDER: System error. Send your registered Fiverr email so customer support can resend the order tokens.",
+      "labels": ["fake_payment", "impersonation", "urgency_pressure"],
+      "risk": "high",
+      "risk_score": 87,
+      "reason": "False order error designed to harvest verified account emails."
+    },
+    {
+      "id": "msg_080",
+      "text": "Let's trade reviews: I buy your gig for $5 and leave 5 stars if you purchase mine and give 5 stars.",
+      "labels": ["off_platform_payment"],
+      "risk": "high",
+      "risk_score": 75,
+      "reason": "Review manipulation violation posing suspension risk."
+    },
+    {
+      "id": "msg_081",
+      "text": "The custom WordPress plugin is installed on your staging domain. Please test user authentication.",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 1,
+      "reason": "Platform work deliverable report."
+    },
+    {
+      "id": "msg_082",
+      "text": "To verify you are not an AI automated responder, reply with the code: VERIFY-993 and click this confirmation token: tinyurl.com/fiverr-gate",
+      "labels": ["phishing_link", "impersonation"],
+      "risk": "high",
+      "risk_score": 88,
+      "reason": "Reverse-verification phishing trick."
+    },
+    {
+      "id": "msg_083",
+      "text": "I require your full residential street address and date of birth to complete internal vendor onboarding.",
+      "labels": ["personal_financial_info"],
+      "risk": "high",
+      "risk_score": 78,
+      "reason": "Excessive identity detail solicitation."
+    },
+    {
+      "id": "msg_084",
+      "text": "Can we schedule our milestone delivery for Tuesday at 5 PM?",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 0,
+      "reason": "Project timeline planning."
+    },
+    {
+      "id": "msg_085",
+      "text": "Download our company brief here: project_assets.vbs. Click yes when the script warning appears.",
+      "labels": ["malicious_download"],
+      "risk": "critical",
+      "risk_score": 99,
+      "reason": "Direct VBScript dropper execution."
+    },
+    {
+      "id": "msg_086",
+      "text": "My payment is held by the platform clearinghouse. Transfer $15 via Steam gift card so I can verify payment account status.",
+      "labels": ["gift_card_payment", "advance_fee", "fake_payment"],
+      "risk": "critical",
+      "risk_score": 97,
+      "reason": "Extortion via arbitrary gaming credits."
+    },
+    {
+      "id": "msg_087",
+      "text": "I’ve attached the vector files in SVG format. Let me know if you need EPS or PDF.",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 0,
+      "reason": "Standard asset distribution."
+    },
+    {
+      "id": "msg_088",
+      "text": "Message me: t . m e / fiverr_manager_desk to coordinate your payout terms immediately.",
+      "labels": ["off_platform_contact", "urgency_pressure"],
+      "risk": "high",
+      "risk_score": 84,
+      "reason": "Spaced character bypass directing to Telegram."
+    },
+    {
+      "id": "msg_089",
+      "text": "Official Notice: You have 15 minutes to confirm your seller payout settings before balance confiscation: https://payouts-auth-fiverr.com",
+      "labels": ["impersonation", "urgency_pressure", "phishing_link"],
+      "risk": "critical",
+      "risk_score": 99,
+      "reason": "Threat-based financial extraction lure."
+    },
+    {
+      "id": "msg_090",
+      "text": "Can you handle the typography adjustments using the fonts provided inside the system zip archive?",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 1,
+      "reason": "Safe graphic design exchange."
+    },
+    {
+      "id": "msg_091",
+      "text": "Send me your card CVV so my finance team can process the tip outside the standard Fiverr fees.",
+      "labels": [
+        "credential_theft",
+        "personal_financial_info",
+        "off_platform_payment"
+      ],
+      "risk": "critical",
+      "risk_score": 100,
+      "reason": "Direct request for credit security parameters."
+    },
+    {
+      "id": "msg_092",
+      "text": "We cannot hire you unless you complete this technical test by running our test suit: test_suite.bat",
+      "labels": ["malicious_download"],
+      "risk": "critical",
+      "risk_score": 98,
+      "reason": "Batch script dropper."
+    },
+    {
+      "id": "msg_093",
+      "text": "Do you offer discounts for recurring monthly subscriptions for SEO optimization?",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 0,
+      "reason": "Legitimate enterprise/subscription discount query."
+    },
+    {
+      "id": "msg_094",
+      "text": "I paid, but Fiverr is blocking confirmation until you authorize your identity through this QR code: [Base64 Embedded Image]",
+      "labels": ["phishing_link", "fake_payment", "impersonation"],
+      "risk": "critical",
+      "risk_score": 97,
+      "reason": "QR phishing (quishing) bypass."
+    },
+    {
+      "id": "msg_095",
+      "text": "Let's transfer the $3,000 project to Wise (TransferWise) to save both of us the 20% commission fee.",
+      "labels": ["off_platform_payment"],
+      "risk": "high",
+      "risk_score": 88,
+      "reason": "Explicit off-platform fee circumvention."
+    },
+    {
+      "id": "msg_096",
+      "text": "Can you provide references or links to live websites you have designed on Shopify?",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 2,
+      "reason": "Standard portfolio query."
+    },
+    {
+      "id": "msg_097",
+      "text": "Fiverr Administrator: Account flagged for abnormal traffic. Send current password and security question answers to remove flag.",
+      "labels": ["impersonation", "credential_theft"],
+      "risk": "critical",
+      "risk_score": 100,
+      "reason": "Flag removal social engineering attack."
+    },
+    {
+      "id": "msg_098",
+      "text": "Here is the Loom screen recording showing the visual bug on our mobile layout: loom.com/share/abc12345",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 1,
+      "reason": "Whitelisted debugging screen share."
+    },
+    {
+      "id": "msg_099",
+      "text": "I can only proceed if you send $10 upfront via PayPal Friends & Family to confirm mutual commitment.",
+      "labels": ["advance_fee", "off_platform_payment"],
+      "risk": "critical",
+      "risk_score": 95,
+      "reason": "Upfront advance fee coercion."
+    },
+    {
+      "id": "msg_100",
+      "text": "Order accepted! I will begin working on the database indexing right now and post updates in this thread.",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 0,
+      "reason": "Standard order kickoff confirmation."
+    },
+    {
+      "id": "msg_101",
+      "text": "What is your email? I need it for the brand guidelines document.",
+      "labels": ["safe"],
+      "risk": "low",
+      "risk_score": 15,
+      "reason": "Could be legitimate depending on context; no payment or credential request.",
+      "source_id": "msg_016",
+      "source_version": "1.0.0"
+    },
+    {
+      "id": "msg_102",
+      "text": "Use this shortened link to confirm your identity before we begin.",
+      "labels": ["phishing_link"],
+      "risk": "high",
+      "risk_score": 79,
+      "reason": "Identity verification through an unexplained external shortened link.",
+      "source_id": "msg_028",
+      "source_version": "1.0.0"
     }
   ],
   "rule_patterns": [
@@ -350,27 +879,23 @@
         "one time code",
         "verification code",
         "6 digit code",
-        "six digit code"
+        "six digit code",
+        "sms code",
+        "auth token",
+        "numeric pin"
       ],
       "base_weight": 45
     },
     {
       "id": "rule_password",
       "category": "credential_theft",
-      "keywords": [
-        "password",
-        "login credentials",
-        "sign in again"
-      ],
+      "keywords": ["password", "login credentials", "sign in again"],
       "base_weight": 40
     },
     {
       "id": "rule_telegram",
       "category": "off_platform_contact",
-      "keywords": [
-        "telegram",
-        "whatsapp"
-      ],
+      "keywords": ["telegram", "whatsapp"],
       "base_weight": 20
     },
     {
@@ -394,7 +919,11 @@
         "registration fee",
         "pay first",
         "unlock fee",
-        "customs fee"
+        "customs fee",
+        "overpayment",
+        "reimburse you",
+        "guarantee fund",
+        "kick back"
       ],
       "base_weight": 45
     },
@@ -405,9 +934,92 @@
         "anydesk",
         "teamviewer",
         "remote access",
-        "access code"
+        "access code",
+        "rustdesk",
+        "quicksupport",
+        "screen connection"
       ],
       "base_weight": 45
+    },
+    {
+      "id": "rule_credentials",
+      "category": "credential_theft",
+      "keywords": [
+        "password",
+        "login credentials",
+        "sign in again",
+        "cvv",
+        "card expiration",
+        "security question",
+        "account token"
+      ],
+      "base_weight": 45
+    },
+    {
+      "id": "rule_off_platform_contact",
+      "category": "off_platform_contact",
+      "keywords": [
+        "telegram",
+        "whatsapp",
+        "skype",
+        "discord",
+        "wechat",
+        "w.h.a.t.s.a.p.p",
+        "d-i-s-c-o-r-d",
+        "t.me",
+        "wa.me",
+        "text my number"
+      ],
+      "base_weight": 25
+    },
+    {
+      "id": "rule_off_platform_payment",
+      "category": "off_platform_payment",
+      "keywords": [
+        "pay outside fiverr",
+        "pay directly",
+        "paypal",
+        "usdt",
+        "bitcoin",
+        "crypto",
+        "zelle",
+        "cashapp",
+        "wise transfer",
+        "western union",
+        "payoneer direct",
+        "bypass commission"
+      ],
+      "base_weight": 35
+    },
+    {
+      "id": "rule_malicious_attachments",
+      "category": "malicious_download",
+      "keywords": [
+        ".scr",
+        ".xlsm",
+        ".exe",
+        ".bat",
+        ".vbs",
+        "run the app",
+        "setup.exe",
+        "password-protected archive"
+      ],
+      "base_weight": 40
+    },
+    {
+      "id": "rule_fake_escrow_phishing",
+      "category": "fake_payment",
+      "keywords": [
+        "release the payment",
+        "needs your email address",
+        "checkout gateway asks",
+        "confirm your billing balance",
+        "unusual login detected",
+        "trust & safety",
+        "scan this qr",
+        "barcode"
+      ],
+      "base_weight": 40
     }
   ]
 }

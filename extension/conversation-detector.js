@@ -17,10 +17,9 @@
       getComputedStyle(node).visibility !== "hidden"
     );
   }
-  function conversationId() {
-    const explicit = document
-      .querySelector("[data-conversation-id]")
-      ?.getAttribute("data-conversation-id");
+  function conversationId(node) {
+    if (/^\/inbox\/[^/]+/.test(location.pathname)) return location.pathname;
+    const explicit = node?.closest('[data-conversation-id]')?.getAttribute('data-conversation-id');
     return (
       explicit ||
       (/^\/inbox\/[^/]+/.test(location.pathname) ? location.pathname : null)
@@ -37,10 +36,15 @@
   }
   function conversationRoot() {
     return (
-      document.querySelector(
-        'main,[role="main"],[data-testid="conversation"],[data-testid="conversation-view"],[data-testid="messages"]',
-      ) || document.body
+      document.querySelector('[data-testid="conversation-view"],[data-testid="messages"],[data-testid="conversation"]') ||
+      document.querySelector('main,[role="main"]') || document.body
     );
+  }
+  function isLoading(root = conversationRoot()) {
+    if (!root || !visible(root)) return true;
+    const loadingSelector = '[aria-busy="true"],[data-loading="true"],[data-testid="loading"],[data-testid="skeleton"]';
+    return root.matches(loadingSelector) || [...root.querySelectorAll(loadingSelector)].some(visible) ||
+      /^(?:loading|loading (?:conversation|messages|chat))[.\s…]*$/i.test(textOf(root));
   }
   function classify(node, text) {
     if (
@@ -55,16 +59,7 @@
       )
     )
       return "system";
-    const envelope =
-      node.closest(
-        '[data-message-id],[role="listitem"],[class*="message" i]',
-      ) || node;
-    const senderText = textOf(
-      envelope.querySelector(senderSelector) ||
-        envelope.firstElementChild ||
-        envelope,
-    ).slice(0, 80);
-    if (/^(me|you)\b/i.test(senderText)) return "outgoing";
+    if (globalThis.fsdMessageDetector.isOwnMessage(node)) return "outgoing";
     return "incoming";
   }
   function inspect() {
@@ -98,7 +93,7 @@
       )
         continue;
       const text = textOf(node);
-      if (text.length < 2 || text.length > 12000) continue;
+      if ((text.length < 2 && !node.querySelector('a[href]')) || text.length > 12000) continue;
       if (
         /^(messages|saved|type a message|create an offer|date of last order|preferred service|all messages)$/i.test(
           text,
@@ -132,5 +127,5 @@
     result.participants = [...participants].slice(0, 8);
     return result;
   }
-  globalThis.fsdConversationDetector = { inspect, conversationRoot };
+  globalThis.fsdConversationDetector = { inspect, conversationRoot, conversationId, isLoading };
 })();

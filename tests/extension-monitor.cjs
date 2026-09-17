@@ -36,6 +36,8 @@ const { chromium } = require("playwright");
       window.resultBatches = 0;
       window.resultPayloads = [];
       window.changeListeners = [];
+      window.pendingRiskLookups = [];
+      window.holdRiskLookups = true;
       window.chrome = {
         storage: {
           local: {
@@ -66,6 +68,8 @@ const { chromium } = require("playwright");
             if (message.type === "FSD_HEARTBEAT") return { ok: true };
             if (message.type === "FSD_VISIBILITY")
               return { ok: true, missingCount: 0 };
+            if (message.type === "FSD_CONVERSATION_RISK" && !message.scores && window.holdRiskLookups)
+              return new Promise(resolve => window.pendingRiskLookups.push(resolve));
             if (message.type === "FSD_CONVERSATION_RISK")
               return { ok: true, scores: {} };
             window.resultBatches++;
@@ -131,7 +135,7 @@ const { chromium } = require("playwright");
     );
     assert.equal(extracted.fallback.sender, null);
     assert.equal(extracted.fallback.timestamp, null);
-    assert.match(extracted.fallback.id, /^msg_[a-f0-9]{8}$/);
+    assert.match(extracted.fallback.id, /^msg_[a-f0-9]{32}$/);
     assert.equal(extracted.fallback.id, extracted.again.id);
     assert.notEqual(
       extracted.fallback.id,
@@ -148,16 +152,69 @@ const { chromium } = require("playwright");
     );
     assert.equal(understood.selected, false);
     assert.equal(understood.foundConversationArea, true);
+    const extractionCases = await page.evaluate(() => {
+      const wrapper = document.createElement("section");
+      wrapper.innerHTML = '<div data-testid="message">You must send me your password.</div><div data-testid="message"><a href="https://fiverr-login.example"><img alt="Verify account"></a></div><div data-testid="message"><span data-testid="sender-name">You</span>Send your password.</div><div data-testid="message"><p>Send your OTP.</p></div>';
+      document.querySelector("main").append(wrapper);
+      const messages = [...wrapper.children].map(node => Boolean(globalThis.fsdMessageExtractor.extract(node)));
+      const nested = globalThis.fsdMessageDetector.isMessage(wrapper.lastChild.firstChild);
+      wrapper.remove();
+      return { messages, nested };
+    });
+    assert.deepEqual(extractionCases.messages, [true, true, false, true], "Incoming You text and image-only links are checked; sender metadata excludes own messages");
+    assert.equal(extractionCases.nested, false, "Nested paragraphs must not count the same native bubble twice");
     await page.addScriptTag({
       path: path.resolve("extension/content-script.js"),
     });
     await page.waitForTimeout(200);
+    assert.equal(await page.locator('[data-conversation-id="old"] [data-fsd-flag]').getAttribute('data-state'), 'checked',
+      'Risky previews render before background lookups complete');
+    assert.equal(await page.locator('[data-conversation-id="new"] [data-fsd-flag]').getAttribute('data-score'), 'null',
+      'Benign previews remain unknown without sufficient message data');
+    await page.evaluate(() => {
+      window.holdRiskLookups = false;
+      window.pendingRiskLookups.splice(0).forEach(resolve => resolve({ ok: true, scores: {} }));
+    });
     assert.equal(
       await page.locator("[data-fsd-warning]").count(),
       1,
       "Starts monitoring automatically",
     );
     await page.evaluate(() => chrome.storage.local.set({ fsd_enabled: true }));
+    await page.waitForTimeout(250);
+    await page.evaluate(() => {
+      const fixtures = document.createElement('aside');
+      fixtures.id = 'preview-regression';
+      fixtures.innerHTML = '<div class="conversation-list-item" data-conversation-id="fallback-safe"><a href="/inbox/fallback-safe">Buyer</a><span>Thanks for the delivery.</span></div><div class="contact ce05uz8" data-conversation-id="contact-safe"><div class="user-info"><p>Buyer Two</p><p>Thanks for the logo.</p></div></div><div class="conversation-list-item" data-conversation-id="loading-preview" aria-busy="true"><a href="/inbox/loading-preview">Buyer Three</a><span>Loading...</span></div>';
+      document.body.append(fixtures);
+    });
+    await page.waitForFunction(() =>
+      document.querySelector('[data-conversation-id="fallback-safe"] [data-fsd-flag]')?.dataset.state === 'unavailable' &&
+      document.querySelector('[data-conversation-id="contact-safe"] [data-fsd-flag]')?.dataset.state === 'unavailable');
+    assert.equal(await page.locator('[data-conversation-id="loading-preview"] [data-fsd-flag]').getAttribute('data-state'), 'checking');
+    await page.locator('[data-conversation-id="loading-preview"]').evaluate(node => {
+      node.removeAttribute('aria-busy');
+      node.querySelector(':scope > span').firstChild.data = 'Thanks for the delivery.';
+    });
+    await page.waitForFunction(() => document.querySelector('[data-conversation-id="loading-preview"] [data-fsd-flag]')?.dataset.state === 'unavailable',
+      null, { timeout: 1500 });
+    await page.evaluate(() => {
+      const row = document.createElement('div');
+      row.className = 'contact ce05uz8';
+      row.dataset.conversationId = 'no-preview';
+      row.innerHTML = '<span class="avatar">A</span><div class="user-info"><p>Buyer Name</p></div><time>4 weeks</time>';
+      document.querySelector('#preview-regression').append(row);
+    });
+    await page.waitForFunction(() => document.querySelector('[data-conversation-id="no-preview"] [data-fsd-flag]')?.dataset.state === 'unavailable');
+    await page.locator('[data-conversation-id="no-preview"] .user-info').evaluate(node => {
+      const preview = document.createElement('p');
+      preview.textContent = 'Send your password immediately.';
+      node.append(preview);
+    });
+    await page.waitForFunction(() => Number(document.querySelector('[data-conversation-id="no-preview"] [data-fsd-flag]')?.dataset.score) >= 61);
+    await page.locator('[data-conversation-id="fallback-safe"] > span').evaluate(node => { node.textContent = 'Send your password immediately.'; });
+    await page.waitForFunction(() => Number(document.querySelector('[data-conversation-id="fallback-safe"] [data-fsd-flag]')?.dataset.score) >= 61);
+    await page.locator('#preview-regression').evaluate(node => node.remove());
     await page.waitForTimeout(250);
     assert.equal(await page.locator("[data-fsd-warning]").count(), 1);
     assert.equal(
@@ -172,7 +229,7 @@ const { chromium } = require("playwright");
         .locator('[data-conversation-id="new"] [data-fsd-flag]')
         .count(),
       1,
-      "Safe preview gets a green status flag",
+      "Benign preview gets an unknown status flag",
     );
     await page
       .locator('[data-conversation-id="new"] [data-testid="message-preview"]')
@@ -205,7 +262,7 @@ const { chromium } = require("playwright");
     );
     assert.equal(
       await page.locator("[data-fsd-warning]").locator("strong").textContent(),
-      "CRITICAL RISK MESSAGE",
+      "High Risk message",
     );
     const firstWarning = page.locator("[data-fsd-warning]").first();
     assert.equal(await firstWarning.locator("#details").isVisible(), false);
@@ -222,7 +279,7 @@ const { chromium } = require("playwright");
         .locator('[data-conversation-id="old"] [data-fsd-flag]')
         .getByRole("img")
         .getAttribute("aria-label"),
-      "Scam alert conversation status.",
+      "High Risk conversation status.",
     );
     await fs.promises.mkdir(path.resolve("test-results"), { recursive: true });
     await firstWarning.screenshot({

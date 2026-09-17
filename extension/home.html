@@ -54,7 +54,7 @@
           <div>
             <h2>Most serious warning</h2>
             <p class="section-help">
-              The strongest warning found in this chat.
+              The strongest warning found across monitored tabs.
             </p>
           </div>
           <span>Saved locally</span>
@@ -74,6 +74,22 @@
         <ul id="signals"></ul>
         <small id="checked-at"></small>
       </section>
+      <section aria-label="Recent detections" aria-live="polite">
+        <div class="result-heading">
+          <div>
+            <h2>Recent detections</h2>
+            <p class="section-help">Detection events saved on this device.</p>
+          </div>
+          <button id="clear-detection-history" class="quiet-button" type="button">Clear History</button>
+        </div>
+        <div class="history-filters" role="group" aria-label="Filter recent detections">
+          <button type="button" data-history-filter="all" aria-pressed="true">All</button>
+          <button type="button" data-history-filter="red" aria-pressed="false">Red</button>
+          <button type="button" data-history-filter="yellow" aria-pressed="false">Yellow</button>
+        </div>
+        <div id="recent-detections"><p class="empty-history">No recent detections.</p></div>
+        <p id="detection-history-notice" role="status"></p>
+      </section>
       <nav aria-label="Tools">
         <a href="tester.html" target="_blank"
           >Message tester <span aria-hidden="true">↗</span></a
@@ -82,8 +98,7 @@
         >
       </nav>
       <small class="fine-print"
-        >HIGH and CRITICAL messages and sender details are saved in the local
-        evidence vault. Labels are not probabilities; SAFE does not guarantee
+        >Risk scores and reasons are saved locally for up to 30 days. Message text and sender identities are not stored. Labels are not probabilities; SAFE does not guarantee
         safety.</small
       >
     </main>

@@ -23,137 +23,57 @@ configuration, and extension source files are preserved.
 
 ## Standalone extension
 
-1. Open chrome://extensions or edge://extensions and enable Developer mode.
-2. Choose Load unpacked and select this repository folder.
-3. Refresh an open Fiverr conversation, open the extension, and press Run protection.
-4. Close the popup if desired. Press Stop protection when finished.
+Load this repository or dist/scam-finder as an unpacked extension. Protection starts automatically unless disabled. Reload the extension after updates, then refresh Fiverr. The popup's Run/Stop setting applies to monitored Fiverr tabs; closing the popup does not stop protection.
 
-Run npm run build:extension to create dist/scam-finder, containing only extension
-runtime files. npm run check:extension validates its manifest, scripts, and links.
-npm test runs browser fixtures and an installed-extension integration test.
-Tests require Playwright Chromium: npx playwright install chromium.
+Run npm run build:extension to package local runtime files, npm run check:extension to validate manifest resources and scripts, and npm test for analyzer, DOM monitor, state/privacy migration, and installed-MV3 integration tests. Browser tests require Playwright Chromium.
 
-- manifest.json — popup, content scripts, service worker, permissions, and options.
-- extension/home.* — Run/Stop popup.
-- extension/analyzer.js — shared analyzer for the native tester and content script.
-- The rule engine returns deduplicated `categories` and `matches` with stable
-  `ruleId`, `category`, `score`, `explanation`, and `action` fields, alongside
-  existing scores and signals. Categories cover PAYMENT_SCAM, PHISHING,
-  ACCOUNT_VERIFICATION, EXTERNAL_COMMUNICATION, PERSONAL_INFORMATION, MALWARE,
-  FAKE_SUPPORT, and the supporting COERCION signal. These are warning categories,
-  not verified accusations. Matching uses local patterns, not AI.
-- extension/content-script.js — rendered-message monitoring and isolated alerts.
-- extension/message-detector.js — message extraction and targeted MutationObserver batches.
-- extension/message-extractor.js — standard in-memory message objects for analysis.
-- extension/link-scanner.js — local URL normalization and structural risk checks.
-- extension/sensitive-information.js — type-specific request and draft indicators.
-- extension/draft-guard.js — local warnings for recognizable secrets in inbox editors.
-- extension/background.js — result persistence.
-- extension/options.* — settings, optional history, export, and deletion.
-- extension/tester.* — local message tester.
+### Runtime modules
 
-The extension checks rendered messages in open Fiverr tabs, not unopened
-conversations. The detector discovers existing messages on start, then processes
-affected subtrees and message ancestors in 150 ms batches. It handles delayed
-insertion, text and link edits, nested bubbles, visibility changes, and removal.
-It ignores its own warning elements and clears pending work when stopped.
-Message extraction is local. HIGH and CRITICAL incoming messages are now retained
-in the evidence vault, as explicitly requested in Module 10.
-The extractor returns `id`, `sender`, `text`, `links` (absolute URL strings),
-`timestamp`, `detectedAt`, and `conversationId`. Extra `linkMetadata` retains
-displayed link text for destination checks. Missing metadata is null; timestamps
-are ISO dates with explicit timezones. Native Fiverr IDs are preferred. When
-Fiverr does not expose an ID, the extractor creates a deterministic `msg_...`
-fingerprint from conversation ID, sender, message text, timestamp, and links.
-Without native metadata, edited text becomes a new fingerprint. Risk summaries remain
-metadata-only; qualifying evidence is sent to the extension worker for IndexedDB.
-Selectors are heuristic and still need live Fiverr verification.
-The popup reports the active tab's detected incoming messages separately from
-the global protection setting. Empty inboxes show "No messages detected";
-other pages show "Open a Fiverr conversation", and connection failures are
-reported explicitly. Counts are transient and are not saved.
-Authenticated live selector validation remains pending: the public inbox URL
-redirects to login. Browser tests use synthetic layouts, not captured Fiverr DOM.
-Risk bands are SAFE (0-20), LOW (21-40), SUSPICIOUS (41-60), HIGH (61-80),
-and CRITICAL (81-100). SAFE does not guarantee safety; scores are rule points,
-not probabilities. `fsdScoreIndicators` sums unique rule IDs and returns `score`
-(capped at 100), `rawScore`, `risk`, and an `indicators` breakdown with each
-rule's `points`. The existing rule weights are retained. Ordinary external URLs
-alone add no points. The message tester shows each indicator's contribution.
-Alerts include actions for each detected signal.
-Warnings start compact with category and signal summaries. View details expands
-the explanations and actions; Dismiss hides the warning until its message or
-threshold changes (or monitoring restarts). Conversation rows show a small
-risk-colored dot with an accessible label and tooltip. The popup
-and inline warnings, tester, and history also show plain-language category
-explanations (for example, "Possible payment scam" or "Sensitive data request").
-Labels are derived from fixed signals, including existing saved results, and
-do not claim that a scam has been proven. The popup
-separates the latest checked message from the highest-risk result seen across
-tabs since results were cleared. Both retain metadata only, even without history;
-Delete saved results clears both. Numeric rule points remain in settings and exports.
-Conversation flags retain risk in tab memory for 30 minutes after equally strong
-evidence was last visible. Weaker or missing evidence does not renew that risk;
-expiration rechecks current previews and messages even without a page update.
-Reused inbox rows use the new conversation's state. Rows without an identifiable
-conversation use only current evidence, with no retained score.
-Message text and sender identities in HIGH/CRITICAL evidence are saved locally,
-never sent to a server. This supersedes the earlier metadata-only policy. The web analyzer
-and native analyzer are currently separate implementations.
+- manifest.json: MV3 worker, local script order, document_end injection, Fiverr host permissions, popup and options.
+- extension/message-detector.js: candidate discovery, incoming/outgoing filtering, and targeted MutationObserver batches every 150 ms. Sender classification uses explicit metadata, not the first word of message content. Image-only anchors are admitted for URL analysis.
+- extension/message-extractor.js: in-memory text, native message IDs, metadata, and anchor destinations. Selected inbox paths provide shared conversation identity. Fallback IDs use a deterministic multi-lane fingerprint; identical messages without native metadata can still be ambiguous, and edits can change fallback identity.
+- extension/conversation-detector.js: conversation identity/root, loading indicators and popup summaries.
+- extension/analyzer.js: deterministic rule weights, categories and explanations. No AI or external service calls.
+- extension/link-scanner.js: local structural URL checks; no redirects, DNS requests, reputation lookup, attachment inspection or OCR.
+- extension/sensitive-information.js and draft-guard.js: sensitive requests and local editor warnings. Drafts are never sent to the worker or saved; warnings do not block sending.
+- extension/content-script.js: analysis caching, per-chat flags, Shadow DOM alerts, dismissal state, route-change detection and visibility reporting.
+- extension/background.js: validates requests, serializes writes and restores retained scores.
+- extension/metadata-store.js: protected references and atomic migration of older databases to metadata-only records.
+- extension/evidence-vault.js: bounded IndexedDB risk history, conversation metadata, snapshots and evidence deletion.
+- extension/home.*, options.*, evidence-ui.js and tester.*: native popup, settings/history, metadata viewer and local message tester.
+- extension/flag-badge.html: visual demonstration; the live badge is generated by the content script.
 
-The extension also checks rendered link destinations locally for displayed-host
-mismatches, Fiverr-like hostnames outside fiverr.com, and URL user information.
-External links alone do not trigger a warning. Redirects are not followed and
-no reputation service is contacted. Hostname details appear only in live inline
-warnings; risk summaries contain fixed signals, while evidence retains message links.
-The standalone link scanner accepts URL strings or link metadata plus plain text.
-It returns normalized destinations, an external-host flag, per-link indicators
-and scores. Fiverr-like labels in outside domains score 60; IP addresses add 20,
-known shorteners add 15, and HTTP adds 10. Ordinary external HTTPS links add zero.
-Shorteners use a small bundled list, not reputation intelligence. No redirects,
-DNS lookups, or backend calls occur. HIGH/CRITICAL evidence retains extracted URLs.
-Sensitive request explanations distinguish OTPs, passwords, cards, CVVs, bank
-accounts, API keys, GitHub tokens, AWS keys, and private keys. Inbox textareas
-and contenteditable fields also show local warnings for labeled secret values
-and private-key blocks while protection runs. Drafts never enter result storage
-or runtime messages. Warnings do not block sending, and unlabeled secrets or
-unsupported editor layouts may not be detected.
+### Risk and loading states
 
-## Local conversation history
+The analyzer sums unique rule weights, capped at 100. Internal bands remain SAFE (0?20), LOW (21?40), SUSPICIOUS (41?60), HIGH (61?80), and CRITICAL (81?100). Display labels are Green Safe (0?20), Yellow Suspicious (21?60), and Red High Risk (61?100). These are rule points, not probabilities or proof of fraud.
 
-The worker owns IndexedDB `fsd-evidence`; `chrome.storage.local` is used only for
-small settings and popup summaries. The database contains `conversations`,
-`messages`, `riskEvents`, and `evidence`. Observed Fiverr messages are recorded
-in `messages` with messageId, conversationId, sender, senderType, text, links,
-capturedAt, lastSeenAt, riskScore, riskLevel, and categories. Conversation
-summaries track participants, message IDs, firstObservedAt, lastObservedAt, the
-highest risk score, and categories. Risk events store message-level security
-events for LOW or higher detections. The `evidence` store keeps the HIGH/CRITICAL
-records shown in Settings.
+Unknown or empty loading content displays Checking, never an automatic Safe result. A previously checked chat retains its saved status while loading. The session cache holds at most 500 protected references with 30-minute expiry; restoring a score does not reset its timestamp. Current visible evidence can renew its score. Persistent message risk used for flags also expires after 30 minutes. Historical evidence remains separately available for up to 30 days.
 
-The evidence store has a capturedAt index and pages of 25 records in Settings.
-Fields are id, conversationId, sender, message, links, riskScore, categories,
-and capturedAt. Evidence captures occur at scores 61-100 while protection runs,
-independently of the optional metadata history setting.
-Identical snapshots are deduplicated; edited messages can produce new snapshots.
-Without native IDs, identical text from the same sender/conversation is collapsed.
-Records remain until deleted or browser storage is cleared; there is no automatic
-expiry or cloud backup. IndexedDB remains subject to browser storage limits.
-Use Delete evidence, Delete all evidence, or Delete saved results to remove data.
-Content scripts may submit evidence but cannot read or delete the vault.
-Drafts and outgoing messages are excluded. The database is local, not encrypted
-by the extension. Failed captures are reported in the vault's status area.
-When a previously captured HIGH or CRITICAL message is no longer visible in the
-same open inbox conversation, the content script asks the worker for a count-only
-vault check and shows "Previous suspicious message detected." This does not prove
-Fiverr deleted the message; virtualized history, loading, filtering, or navigation
-can also remove DOM nodes. The extension cannot recover messages it never saw.
-Native message IDs and generated `msg_...` fingerprints can be checked across
-page reloads. Legacy `local_...` IDs from older builds are only reliable within
-the current tab session after that message was observed.
-This is the conversation monitoring engine: capture observed message state,
-analyze risk, remember it locally, then compare the current visible conversation
-against remembered suspicious messages.
+Inline warnings default to 21 rule points. Existing user-selected thresholds are preserved. Warnings use textContent and isolated Shadow DOM, support keyboard expansion and dismissal, and retain dismissal across equivalent rerenders within the page session. Conversation header flags work without a sidebar. Generation checks reject scans completed after a newer scan or navigation. Navigation is checked independently of popup polling.
+
+Conversation risk is the highest message score plus half the sum of remaining positive scores, capped at 100. The popup's latest and highest result summaries are global across monitored tabs; they are not a selected-chat report.
+
+### Privacy and storage
+
+Message content and sender information are used transiently to analyze visible DOM content. They are not persisted. The worker normalizes every saved record to risk metadata: scores, fixed reasons/categories, timestamps and keyed HMAC references. Raw message text, sender names, URLs and raw conversation/message identifiers are excluded from database values and keys. The per-install reference secret stays locally in extension storage.
+
+IndexedDB version 7 migrates existing records atomically: risk metadata is preserved while stored quotations, participants, links and raw references are removed. This follows AGENTS.md's metadata-only requirement. Previously stored message quotations will no longer appear in the viewer.
+
+chrome.storage.local contains settings, the reference secret, latest/highest summaries and optionally the last 100 metadata summaries. Turning optional history off does not disable the separate risk-metadata vault. chrome.storage.session contains the bounded flag cache.
+
+The database retains risk metadata for up to 30 days, with caps of 500 conversations/snapshots and 10,000 records per other store. Cleanup runs on worker initialization and periodically during reads/writes. Delete evidence removes corresponding message/event copies and updates conversation metadata. Delete all evidence clears the vault and flag cache; Delete saved results also clears latest/highest summaries and optional history. No cloud backup or message upload is implemented.
+
+### Missing and deleted messages
+
+After 750 ms without further relevant scan updates, the monitor compares visible IDs with previously observed IDs. Loading indicators suppress comparisons. Historical messages never observed in the current page session are not automatically reported missing because pagination may not have loaded them.
+
+DOM disappearance is labeled previously flagged message not visible. It is not proof of deletion: scrolling, virtualization and filtering can remove nodes. Only an explicit deletion marker attached to a native message ID permits a marked-deleted label for previously captured risk. Reappearing messages clear disappearance status even when their text has not changed. The extension cannot recover messages it never saw.
+
+### Validation limits
+
+The tests use synthetic layouts, including delayed previews, nested bubbles, image-only links, incoming text beginning with You, rerenders, stale async scans, loading suppression, metadata migration, expiry and deletion. Authenticated live Fiverr selector validation is still required; generated classes and deletion/loading markers may differ between layouts.
+
+The synthetic dataset is development material, not a trained model or runtime rule source. The Next.js tester uses a separate older analyzer. Its AI-related preview controls do not invoke AI and do not configure the extension. No Next.js source is changed by the extension improvements.
 
 ## Recovery record
 

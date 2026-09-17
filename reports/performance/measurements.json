@@ -1,0 +1,18 @@
+{
+  "ruleMatching": {
+    "before": {
+      "messages": 2600,
+      "milliseconds": 1730,
+      "regexAllocations": 509600
+    },
+    "after": {
+      "messages": 2600,
+      "milliseconds": 123,
+      "regexAllocations": 0
+    }
+  },
+  "equivalentCases": 130,
+  "historyReadsFor100ConcurrentLookups": 1,
+  "scanBatchesFor100GreenAlerts": 0,
+  "scanBatchesFor100MessageEdits": 1
+}

@@ -1,0 +1,47 @@
+﻿{
+  "manifest_version": 3,
+  "name": "Scam Finder for Fiverr",
+  "version": "1.0.0",
+  "description": "Automatically check Fiverr messages locally and receive inline scam-risk alerts.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["https://fiverr.com/*", "https://*.fiverr.com/*"],
+  "action": {
+    "default_title": "Scam Finder",
+    "default_popup": "extension/home.html"
+  },
+  "background": { "service_worker": "extension/background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://fiverr.com/*", "https://*.fiverr.com/*"],
+      "js": [
+        "extension/link-scanner.js",
+        "extension/urlDetector.js",
+        "extension/sensitive-information.js",
+        "extension/normalizer.js",
+        "extension/patternMatcher.js",
+        "extension/scorer.js",
+        "extension/alertUI.js",
+        "extension/messageHistory.js",
+        "extension/deletedMessageDetector.js",
+        "extension/analyzer.js",
+        "extension/message-detector.js",
+        "extension/message-extractor.js",
+        "extension/conversation-detector.js",
+        "extension/message-observer.js",
+        "extension/draft-guard.js",
+        "extension/content-script.js"
+      ],
+      "run_at": "document_end"
+    }
+  ],
+  "options_page": "extension/options.html",
+  "web_accessible_resources": [
+    {
+      "resources": ["data/scamPatterns.json"],
+      "matches": ["https://fiverr.com/*", "https://*.fiverr.com/*"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

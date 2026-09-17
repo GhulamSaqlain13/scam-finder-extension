@@ -1,9 +1,18 @@
 ﻿/* global chrome */
-importScripts("evidence-vault.js");
+importScripts("metadata-store.js", "evidence-vault.js");
 let queue = Promise.resolve();
+queue = queue.then(() => fsdEvidenceVault.initialize()).catch(() => {});
 const contentScriptFiles = [
+  "extension/conversation-data.js",
   "extension/link-scanner.js",
+  "extension/urlDetector.js",
   "extension/sensitive-information.js",
+  "extension/normalizer.js",
+  "extension/patternMatcher.js",
+  "extension/scorer.js",
+  "extension/alertUI.js",
+  "extension/messageHistory.js",
+  "extension/deletedMessageDetector.js",
   "extension/analyzer.js",
   "extension/message-detector.js",
   "extension/message-extractor.js",
@@ -22,8 +31,14 @@ function injectIntoFiverrTabs() {
             chrome.scripting
               .executeScript({
                 target: { tabId: tab.id },
-                files: contentScriptFiles,
+                world: "MAIN",
+                files: ["extension/page-data.js", "extension/page-observer.js"],
               })
+              .then(() => chrome.scripting
+              .executeScript({
+                target: { tabId: tab.id },
+                files: contentScriptFiles,
+              }))
               .catch(() => {}),
           ),
       ),
@@ -190,7 +205,8 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       typeof message.conversationId !== "string" ||
       message.conversationId.length > 2048 ||
       !ids(message.visibleIds) ||
-      !ids(message.observedIds)
+      !ids(message.observedIds) ||
+      (message.deletedIds !== undefined && !ids(message.deletedIds))
     )
       return;
     queue = queue.then(async () => {
@@ -202,6 +218,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
           message.conversationId,
           message.visibleIds,
           message.observedIds,
+          message.deletedIds || [],
         )),
       };
     });
@@ -223,7 +240,11 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       !(
         url.hostname === "fiverr.com" || url.hostname.endsWith(".fiverr.com")
       ) ||
-      !ids(message.conversationIds)
+      !ids(message.conversationIds) ||
+      (message.scores !== undefined &&
+        (!Array.isArray(message.scores) ||
+          message.scores.length !== message.conversationIds.length ||
+          !message.scores.every((score) => Number.isInteger(score) && score >= 0 && score <= 100)))
     )
       return;
     queue = queue.then(async () => {
@@ -232,7 +253,30 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       const conversationIds = message.conversationIds.map((id) =>
         id.startsWith("url:") ? id.slice(4).split("?")[0] : id,
       );
-      return { ok: true, scores: await fsdEvidenceVault.risk(conversationIds) };
+      // Session storage survives page reloads and worker suspension. Never store
+      // raw conversation references, participant names, or preview contents here.
+      const now = Date.now();
+      const data = await chrome.storage.session.get("fsd_flag_scores");
+      const retained = Object.fromEntries(Object.entries(data.fsd_flag_scores || {})
+        .filter(([, record]) => record.expiresAt > now));
+      const hashes = await Promise.all(conversationIds.map(fsdMetadata.reference));
+      if (message.scores) hashes.forEach((hash, index) => {
+        const score = message.scores[index];
+        if (!retained[hash] || score >= retained[hash].score)
+          retained[hash] = { score, expiresAt: now + 30 * 60 * 1000 };
+      });
+      const bounded = Object.fromEntries(Object.entries(retained)
+        .sort((a, b) => b[1].expiresAt - a[1].expiresAt).slice(0, 500));
+        if (message.scores)
+          await chrome.storage.session.set({ fsd_flag_scores: bounded });
+      const records = await fsdEvidenceVault.riskState(conversationIds);
+      const scores = {};
+      conversationIds.forEach((id, index) => {
+        const cached = bounded[hashes[index]];
+        if (cached && (!records[id] || cached.score >= records[id].score)) records[id] = cached;
+        if (records[id]) scores[id] = records[id].score;
+      });
+      return { ok: true, scores, records };
     });
   } else if (message?.type === "FSD_OPEN_EVIDENCE" && sender.tab) {
     let url;
@@ -287,18 +331,20 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       )
         throw Error("Invalid evidence key");
       await fsdEvidenceVault.remove(message.key);
-      await chrome.storage.local.set({ fsd_vault_revision: Date.now() });
+      await chrome.storage.session.remove("fsd_flag_scores");
+      await chrome.storage.local.set({ fsd_vault_revision: Date.now(), fsd_cache_reset: Date.now() });
       return { ok: true };
     });
   } else if (message?.type === "FSD_CLEAR" && extensionPage) {
     queue = queue.then(async () => {
+      await chrome.storage.session.remove("fsd_flag_scores");
       await chrome.storage.local.remove([
         "fsd_history",
         "fsd_last_result",
         "fsd_highest_result",
       ]);
       await fsdEvidenceVault.remove();
-      await chrome.storage.local.set({ fsd_vault_revision: Date.now() });
+      await chrome.storage.local.set({ fsd_vault_revision: Date.now(), fsd_cache_reset: Date.now() });
       return { ok: true };
     });
   } else if (message?.type === "FSD_RESULTS" && sender.tab) {

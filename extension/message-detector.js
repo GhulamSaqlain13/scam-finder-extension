@@ -1,15 +1,16 @@
 (() => {
   const selector =
-    '[data-testid="message"],[data-testid="message-bubble"],[data-message-id],[class*="message-bubble"],[class*="messageBubble"],[class*="conversation-message"]';
+    '[data-testid="message"],[data-testid="message-bubble"],[data-testid="deleted-message"],[data-message-id],[class*="message-bubble"],[class*="messageBubble"],[class*="conversation-message"]';
   const fallbackSelector =
     '[role="main"] [class*="message" i],[role="main"] [aria-label*="message" i],[role="main"] [role="listitem"],[role="main"] p,[role="main"] [dir="auto"],[data-testid="conversation"] [class*="message" i],[data-testid="conversation-view"] [class*="message" i],[data-testid="messages"] [class*="message" i],body [data-message-id],body [data-testid="message"],body [data-testid="message-bubble"],body [class*="message-bubble" i],body [class*="messageBubble" i],body p,body [dir="auto"]';
   const candidateSelector = selector + "," + fallbackSelector;
   const rowContainerSelector =
-    '[data-testid="conversation-item"],[data-testid="inbox-conversation"],[data-conversation-id],.conversation-list-item,.conversation-item,.inbox-conversation,.inbox-list-item,.ce05uz8.contact,.ce05uz0.contact,nav [role="listitem"],aside [role="listitem"],[class*="inbox" i] [role="listitem"],[class*="conversation" i] [role="listitem"]';
+    '[data-testid="conversation-item"],[data-testid="inbox-conversation"],[data-conversation-id],[data-thread-id],.conversation-list-item,.conversation-item,.inbox-conversation,.inbox-list-item,.ce05uz8.contact,.ce05uz0.contact,nav [role="listitem"],aside [role="listitem"],[class*="inbox" i] [role="listitem"],[class*="conversation" i] [role="listitem"]';
   const rowSelector = rowContainerSelector + ',a[href*="/inbox/"]';
   const previewSelector =
     '[data-testid="message-preview"],[data-testid="last-message"],[class*="message-preview"],[class*="last-message"],.message-preview,.last-message,.message-snippet,.conversation-preview,.contact-excerpt';
-  const owned = "[data-fsd-warning],[data-fsd-flag],[data-fsd-previous]";
+  const owned =
+    "[data-fsd-alert],[data-fsd-warning],[data-fsd-flag],[data-fsd-chat-flag],[data-fsd-previous],[data-fsd-draft-warning]";
   function textOf(node) {
     return (node.innerText || node.textContent || "")
       .replace(/\s+/g, " ")
@@ -17,7 +18,10 @@
   }
   function hasVisibleText(node) {
     const text = textOf(node);
-    return text.length >= 2 && text.length <= 12000;
+    return (
+      text.length <= 12000 &&
+      (text.length >= 2 || Boolean(node.querySelector("a[href]")))
+    );
   }
   function isUiText(node) {
     const text = textOf(node).toLowerCase();
@@ -43,14 +47,12 @@
     const label = textOf(
       envelope.querySelector(
         '[data-testid="message-sender"],[data-testid="sender-name"],[class*="sender" i],[class*="user-name" i]',
-      ) ||
-        envelope.firstElementChild ||
-        envelope,
+      ) || document.createElement("span"),
     )
       .slice(0, 40)
       .toLowerCase();
     return (
-      /^(me|you)\b/.test(label) ||
+      /^(me|you)$/.test(label.trim()) ||
       /\bonly visible to you\b/i.test(textOf(envelope))
     );
   }
@@ -64,6 +66,9 @@
           ',nav,header,footer,form,textarea,button,[role="button"],[contenteditable="true"]',
       ) ||
       node.closest(previewSelector) ||
+      node.closest(
+        '[data-testid="conversation-item"],[data-testid="inbox-conversation"],.contact,.conversation-list-item',
+      ) ||
       !node.getClientRects().length ||
       getComputedStyle(node).visibility === "hidden" ||
       !hasVisibleText(node) ||
@@ -73,6 +78,10 @@
       return false;
     if (!node.matches(selector) && !/^\/inbox\/[^/]+/.test(location.pathname))
       return false;
+    const root = globalThis.fsdConversationDetector?.conversationRoot();
+    if (!node.matches(selector) && root && !root.contains(node)) return false;
+    if (!node.matches(selector) && node.parentElement?.closest(selector))
+      return false;
     if (
       !node.matches(selector) &&
       node.querySelector(fallbackSelector) &&
@@ -81,7 +90,16 @@
       return false;
     return true;
   }
-  function create({ onBatch, hasMessage, hasRow }) {
+  function deletedId(node) {
+    const envelope = node.closest("[data-message-id]");
+    if (!envelope || !node.isConnected) return null;
+    return envelope.matches(
+      '[data-deleted="true"],[data-testid="deleted-message"]',
+    ) || envelope.querySelector('[data-testid="deleted-message"]')
+      ? envelope.getAttribute("data-message-id")
+      : null;
+  }
+  function create({ onBatch, hasMessage, hasRow, observeMessages = true }) {
     const messages = new Set();
     const rows = new Set();
     let timer;
@@ -91,13 +109,17 @@
       if (!element || element.closest(owned)) return;
       // Queue every matching ancestor: adding an inner bubble invalidates its wrapper.
       for (let parent = element; parent; parent = parent.parentElement) {
-        if (parent.matches(candidateSelector) || hasMessage(parent))
+        if (
+          observeMessages &&
+          (parent.matches(candidateSelector) || hasMessage(parent))
+        )
           messages.add(parent);
         if (parent.matches(rowSelector) || hasRow(parent)) rows.add(parent);
       }
       if (descendants) {
-        for (const child of element.querySelectorAll(candidateSelector))
-          messages.add(child);
+        if (observeMessages)
+          for (const child of element.querySelectorAll(candidateSelector))
+            messages.add(child);
         for (const child of element.querySelectorAll(rowSelector))
           rows.add(child);
       }
@@ -111,17 +133,22 @@
     }
     const observer = new MutationObserver((records) => {
       let removed = false;
+      const queued = new Map();
+      const collect = (node, descendants = false) => {
+        queued.set(node, descendants || queued.get(node) || false);
+      };
       for (const record of records) {
         if (record.type === "childList") {
           const changed = [...record.addedNodes, ...record.removedNodes].filter(
             (node) => !(node.nodeType === 1 && node.matches(owned)),
           );
           if (!changed.length) continue;
-          queue(record.target);
-          for (const node of record.addedNodes) queue(node, true);
+          collect(record.target);
+          for (const node of record.addedNodes) collect(node, true);
           removed ||= record.removedNodes.length > 0;
-        } else queue(record.target, record.type === "attributes");
+        } else collect(record.target, record.type === "attributes");
       }
+      for (const [node, descendants] of queued) queue(node, descendants);
       // The first mutation sets the deadline; later arrivals cannot postpone it.
       if (
         running &&
@@ -150,8 +177,12 @@
           attributeFilter: [
             "href",
             "data-conversation-id",
+            "data-thread-id",
             "aria-current",
             "aria-selected",
+            "aria-busy",
+            "data-loading",
+            "data-deleted",
             "class",
             "data-direction",
             "data-is-own",
@@ -173,6 +204,8 @@
   globalThis.fsdMessageDetector = {
     create,
     isMessage,
+    isOwnMessage,
+    deletedId,
     selector,
     candidateSelector,
     rowContainerSelector,

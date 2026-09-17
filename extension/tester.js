@@ -3,7 +3,7 @@ function analyze() {
   if (!input.value.trim()) { input.setCustomValidity("Enter a message."); input.reportValidity(); return; }
   input.setCustomValidity("");
   const result = globalThis.fsdAnalyze(input.value);
-  document.getElementById("risk").textContent = globalThis.fsdRiskLabel(result.score);
+  document.getElementById("risk").textContent = globalThis.fsdDisplayRisk(result.score);
   document.getElementById("categories").textContent = globalThis.fsdCategoryLabels(result.signals).join(". ");
   document.getElementById("signals").replaceChildren(...result.indicators.map(indicator => {
     const li = document.createElement("li"); li.textContent = indicator.explanation + " (+" + indicator.points + " points). " + indicator.action; return li;

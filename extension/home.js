@@ -4,9 +4,13 @@ const status = document.getElementById("status");
 const notice = document.getElementById("notice");
 let enabled = true;
 let statusVersion = 0;
+let detectionHistory = [];
+let historyFilter = "all";
+let conversationRenderKey;
 function setStatus(text, monitoring = false) {
-  status.textContent = text;
-  document.body.dataset.monitoring = String(monitoring);
+  if (status.textContent !== text) status.textContent = text;
+  if (document.body.dataset.monitoring !== String(monitoring))
+    document.body.dataset.monitoring = String(monitoring);
   const ownVisible =
     "This conversation is open, but only your own replies or Fiverr system text are visible right now.";
   if (text === "No incoming messages detected") notice.textContent = ownVisible;
@@ -74,6 +78,12 @@ function renderConversation(conversation) {
   const state = document.getElementById("conversation-state");
   const summary = document.getElementById("conversation-summary");
   if (!state || !summary) return;
+  const renderKey = JSON.stringify([
+    conversation?.selected, conversation?.foundConversationArea,
+    conversation?.participants, conversation?.counts,
+  ]);
+  if (renderKey === conversationRenderKey) return;
+  conversationRenderKey = renderKey;
   if (!conversation?.selected) {
     state.textContent = conversation?.foundConversationArea
       ? "Inbox list"
@@ -105,6 +115,60 @@ function renderConversation(conversation) {
     }),
   );
 }
+function historyLevel(score) {
+  return score >= 60 ? "red" : score >= 30 ? "yellow" : "green";
+}
+function renderDetectionHistory() {
+  const container = document.getElementById("recent-detections");
+  if (!container) return;
+  const visible = detectionHistory
+    .filter((event) => historyFilter === "all" || historyLevel(event.score) === historyFilter)
+    .slice(0, 100);
+  container.replaceChildren();
+  if (!visible.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-history";
+    empty.textContent = "No recent detections.";
+    container.append(empty);
+    return;
+  }
+  for (const event of visible) {
+    const level = historyLevel(event.score);
+    const item = document.createElement("article");
+    item.className = "recent-detection";
+    item.dataset.level = level;
+    const title = document.createElement("strong");
+    title.textContent = level === "red" ? "High Risk" : level === "yellow" ? "Suspicious" : "Safe";
+    const score = document.createElement("span");
+    score.textContent = `  Score: ${event.score}`;
+    title.append(score);
+    const time = document.createElement("small");
+    time.textContent = Number.isFinite(event.checkedAt)
+      ? new Date(event.checkedAt).toLocaleString()
+      : "Detection time unavailable";
+    const privacy = document.createElement("small");
+    privacy.textContent = "Message text is not stored.";
+    const reasons = document.createElement("ul");
+    for (const signal of event.signals || []) {
+      const reason = document.createElement("li");
+      reason.textContent = friendlySignal(signal);
+      reasons.append(reason);
+    }
+    item.append(title, time, privacy, reasons);
+    container.append(item);
+  }
+}
+async function loadDetectionHistory() {
+  try {
+    const data = await chrome.storage.local.get("fsd_history");
+    detectionHistory = Array.isArray(data.fsd_history)
+      ? data.fsd_history.filter((event) => Number.isFinite(event?.score)).slice(0, 100)
+      : [];
+    renderDetectionHistory();
+  } catch {
+    document.getElementById("detection-history-notice").textContent = "Could not load detection history.";
+  }
+}
 function render(data) {
   if ("fsd_enabled" in data || !document.body.dataset.running) {
     if ("fsd_enabled" in data) enabled = data.fsd_enabled !== false;
@@ -121,7 +185,7 @@ function render(data) {
     const result = data[key];
     const risk = document.getElementById(prefix + "risk");
     risk.textContent = result
-      ? globalThis.fsdRiskLabel(result.score)
+      ? globalThis.fsdDisplayRisk(result.score)
       : "No messages checked";
     risk.style.color = result ? globalThis.fsdRiskColor(result.score) : "";
     let categories = document.getElementById(prefix + "categories");
@@ -160,13 +224,38 @@ chrome.storage.local
       "Could not load protection state. Reopen the extension.";
   });
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local")
+  if (area === "local") {
     render(
       Object.fromEntries(
         Object.entries(changes).map(([key, value]) => [key, value.newValue]),
       ),
     );
+    if (changes.fsd_history) {
+      detectionHistory = Array.isArray(changes.fsd_history.newValue) ? changes.fsd_history.newValue : [];
+      renderDetectionHistory();
+    }
+  }
 });
+for (const filter of document.querySelectorAll("[data-history-filter]")) {
+  filter.addEventListener("click", () => {
+    historyFilter = filter.dataset.historyFilter;
+    for (const button of document.querySelectorAll("[data-history-filter]"))
+      button.setAttribute("aria-pressed", String(button === filter));
+    renderDetectionHistory();
+  });
+}
+document.getElementById("clear-detection-history")?.addEventListener("click", async () => {
+  const message = document.getElementById("detection-history-notice");
+  try {
+    await chrome.storage.local.remove("fsd_history");
+    detectionHistory = [];
+    renderDetectionHistory();
+    message.textContent = "Detection history cleared.";
+  } catch {
+    message.textContent = "Could not clear detection history.";
+  }
+});
+void loadDetectionHistory();
 // The popup owns this timer; closing it ends polling. Counts never enter storage.
 const statusTimer = setInterval(refreshStatus, 1000);
 window.addEventListener("pagehide", () => clearInterval(statusTimer));

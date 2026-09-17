@@ -16,6 +16,7 @@ const { chromium } = require("playwright");
       context.serviceWorkers()[0] ||
       (await context.waitForEvent("serviceworker", { timeout: 15000 }));
     const id = new URL(worker.url()).host;
+    const protectedIds = await worker.evaluate(async () => ({ conversation: await fsdMetadata.reference('/inbox/test'), first: await fsdMetadata.reference('first') }));
     await context.route("https://www.fiverr.com/**", (route) =>
       route.fulfill({
         contentType: "text/html",
@@ -68,7 +69,7 @@ const { chromium } = require("playwright");
     await chat.locator("[data-fsd-warning]").waitFor();
     assert.equal(
       await chat.locator("[data-fsd-warning]").locator("strong").textContent(),
-      "CRITICAL RISK MESSAGE",
+      "High Risk message",
     );
     assert.match(
       await chat.locator("[data-fsd-warning]").locator("section").textContent(),
@@ -80,8 +81,8 @@ const { chromium } = require("playwright");
     );
     await popup.waitForFunction(
       () =>
-        document.getElementById("risk").textContent === "SAFE" &&
-        document.getElementById("highest-risk").textContent === "CRITICAL",
+        document.getElementById("risk").textContent === "Safe" &&
+        document.getElementById("highest-risk").textContent === "High Risk",
     );
     assert.match(
       await popup.locator("#highest-signals").textContent(),
@@ -181,7 +182,7 @@ const { chromium } = require("playwright");
         .locator(".ce05uz8.contact [data-fsd-flag]")
         .getByRole("img")
         .getAttribute("aria-label"),
-      "Scam alert conversation status.",
+      "High Risk conversation status.",
     );
     await fs.promises.mkdir(path.join(root, "test-results"), {
       recursive: true,
@@ -228,7 +229,7 @@ const { chromium } = require("playwright");
         "<p>Fiverr Only visible to you</p><p>cosmicpuma635 can no longer be contacted.</p>";
     });
     await popup.waitForFunction(
-      () => document.getElementById("risk").textContent === "HIGH",
+      () => document.getElementById("risk").textContent === "High Risk",
     );
     assert.match(
       await popup.locator("#categories").textContent(),
@@ -308,11 +309,11 @@ const { chromium } = require("playwright");
       2,
       "Only high-risk incoming messages are captured; rescans are deduplicated",
     );
-    const firstEvidence = evidence.rows.find((record) => record.id === "first");
-    assert.equal(firstEvidence.sender, "test-sender");
-    assert.equal(firstEvidence.conversationId, "/inbox/test");
-    assert.match(firstEvidence.message, /Send me your password/);
-    assert.deepEqual(firstEvidence.links, ["https://example.org/reference"]);
+    const firstEvidence = evidence.rows.find((record) => record.id === protectedIds.first);
+    assert.equal(firstEvidence.sender, undefined);
+    assert.equal(firstEvidence.conversationId, protectedIds.conversation);
+    assert.equal(firstEvidence.message, undefined);
+    assert.equal(firstEvidence.links, undefined);
     assert.equal(firstEvidence.riskScore, 100);
     assert.ok(firstEvidence.categories.includes("ACCOUNT_VERIFICATION"));
     assert.ok(Number.isFinite(Date.parse(firstEvidence.capturedAt)));
@@ -363,25 +364,25 @@ const { chromium } = require("playwright");
     assert.ok(
       localHistory.conversations.some(
         (row) =>
-          row.conversationId === "/inbox/test" && row.highestRiskScore === 100,
+          row.conversationId === protectedIds.conversation && row.highestRiskScore === 100,
       ),
     );
     assert.ok(
       localHistory.conversations.some(
         (row) =>
-          row.conversationId === "/inbox/test" &&
+          row.conversationId === protectedIds.conversation &&
           row.conversationRiskScore === 100 &&
           row.riskLevel === "CRITICAL",
       ),
     );
     const storedMessage = localHistory.messages.find(
       (row) =>
-        row.conversationId === "/inbox/test" && row.messageId === "first",
+        row.conversationId === protectedIds.conversation && row.messageId === protectedIds.first,
     );
     assert.ok(
       storedMessage &&
         storedMessage.senderType === "other" &&
-        /Send me your password/.test(storedMessage.text),
+        storedMessage.text === undefined && storedMessage.sender === undefined,
     );
     assert.equal(storedMessage.analysis.riskLevel, "CRITICAL");
     assert.equal(storedMessage.analysis.riskScore, 100);
@@ -397,7 +398,7 @@ const { chromium } = require("playwright");
     );
     const storedRiskEvent = localHistory.riskEvents.find(
       (row) =>
-        row.conversationId === "/inbox/test" && row.messageId === "first",
+        row.conversationId === protectedIds.conversation && row.messageId === protectedIds.first,
     );
     assert.ok(storedRiskEvent && storedRiskEvent.riskLevel === "CRITICAL");
     assert.ok(
@@ -407,7 +408,7 @@ const { chromium } = require("playwright");
     );
     assert.ok(
       localHistory.evidenceRows.some(
-        (row) => row.id === "first" && row.riskScore === 100,
+        (row) => row.id === protectedIds.first && row.riskScore === 100,
       ),
     );
     assert.equal(
@@ -429,7 +430,7 @@ const { chromium } = require("playwright");
         .locator("[data-fsd-previous]")
         .locator("section")
         .textContent(),
-      /SCAM ACTIVITY DETECTED/,
+      /Previously flagged message is not visible/,
     );
     assert.match(
       await chat
@@ -450,7 +451,7 @@ const { chromium } = require("playwright");
         .locator("[data-fsd-previous]")
         .locator("section")
         .textContent(),
-      /Risk:\s*CRITICAL/,
+      /Risk:\s*High Risk/,
     );
     assert.match(
       await chat
@@ -486,11 +487,11 @@ const { chromium } = require("playwright");
     );
     assert.match(
       await evidenceViewer.locator("#conversation-evidence").textContent(),
-      /Conversation: test-sender/,
+      /Saved conversation/,
     );
     assert.match(
       await evidenceViewer.locator("#conversation-evidence").textContent(),
-      /Status: CRITICAL RISK/,
+      /Status: HIGH RISK/,
     );
     assert.match(
       await evidenceViewer.locator("#conversation-evidence").textContent(),
@@ -498,11 +499,11 @@ const { chromium } = require("playwright");
     );
     assert.match(
       await evidenceViewer.locator("#conversation-evidence").textContent(),
-      /Send me your password immediately/,
+      /Message content is not stored/,
     );
     assert.match(
       await evidenceViewer.locator("#conversation-evidence").textContent(),
-      /Risk: CRITICAL/,
+      /Risk: High Risk/,
     );
     assert.match(
       await evidenceViewer.locator("#conversation-evidence").textContent(),
@@ -660,7 +661,7 @@ const { chromium } = require("playwright");
         missing.suspiciousMissingCount !== 1 ||
         missing.ignoredMissingCount !== 0 ||
         missing.maxRisk !== 90 ||
-        missing.suspiciousMissingIds[0] !== "risky-observed"
+        missing.suspiciousMissingIds[0] !== await fsdMetadata.reference("risky-observed")
       )
         throw new Error(
           "Conversation memory did not detect missing suspicious state",
@@ -702,11 +703,12 @@ const { chromium } = require("playwright");
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
       });
+      const cumulativeKey = await fsdMetadata.reference("cumulative");
       const conversation = await new Promise((resolve, reject) => {
         const request = db
           .transaction("conversations", "readonly")
           .objectStore("conversations")
-          .get("cumulative");
+          .get(cumulativeKey);
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
       });
@@ -736,7 +738,7 @@ const { chromium } = require("playwright");
     await tester.goto("chrome-extension://" + id + "/extension/tester.html");
     await tester.locator("#message").fill("Send me your password immediately.");
     await tester.locator("#tester > button").click();
-    assert.equal(await tester.locator("#risk").textContent(), "CRITICAL");
+    assert.equal(await tester.locator("#risk").textContent(), "High Risk");
     assert.match(
       await tester.locator("#categories").textContent(),
       /Sensitive data request/,
@@ -750,7 +752,7 @@ const { chromium } = require("playwright");
     );
     assert.equal(
       await settings.locator("#history article strong").textContent(),
-      "CRITICAL",
+      "High Risk",
     );
     await settings.locator("#clear").click();
     await settings.waitForFunction(
@@ -791,6 +793,70 @@ const { chromium } = require("playwright");
     await popup2.screenshot({
       path: path.join(root, "test-results/popup.png"),
     });
+    await popup2.evaluate(() => chrome.storage.local.set({ fsd_enabled: true }));
+    const reloadChat = await context.newPage();
+    let loading = false;
+    await reloadChat.route("https://www.fiverr.com/inbox/reload-fixture", (route) =>
+      route.fulfill({
+        contentType: "text/html",
+        body: '<html><body><nav><div data-testid="conversation-item" data-conversation-id="reload-private-reference"><p data-testid="message-preview">' +
+          (loading ? "" : "Send me your password immediately.") +
+          '</p></div></nav><main>Loading conversation...</main></body></html>',
+      }),
+    );
+    await reloadChat.goto("https://www.fiverr.com/inbox/reload-fixture");
+    const reloadFlag = reloadChat.locator("[data-fsd-flag]");
+    await reloadFlag.waitFor();
+    const originalScore = await reloadFlag.getAttribute("data-score");
+    assert.ok(Number(originalScore) > 60);
+    await popup2.waitForFunction(async () => {
+      const data = await chrome.storage.session.get("fsd_flag_scores");
+      return Object.values(data.fsd_flag_scores || {}).some((record) => record.score === 100);
+    });
+    // Wait for the specific conversation to finish its queued cache write.
+    const reloadHash = await worker.evaluate(() => fsdMetadata.reference("reload-private-reference"));
+    await popup2.evaluate(hash => { window.reloadHash = hash; }, reloadHash);
+    await popup2.waitForFunction(async () =>
+      (await chrome.storage.session.get("fsd_flag_scores")).fsd_flag_scores?.[window.reloadHash],
+    );
+    loading = true;
+    await reloadChat.reload();
+    // Local status paints immediately; retained risk arrives asynchronously.
+    await reloadChat.waitForFunction(score =>
+      document.querySelector('[data-fsd-flag]')?.dataset.score === score,
+      originalScore, { timeout: 5000 });
+    assert.equal(await reloadFlag.getAttribute("data-score"), originalScore,
+      "Reload restores the previous flag while the preview and messages are still loading");
+    const flagCache = await popup2.evaluate(async () =>
+      JSON.stringify(await chrome.storage.session.get("fsd_flag_scores")),
+    );
+    assert.ok(!flagCache.includes("reload-private-reference"));
+    assert.ok(!flagCache.includes("password"));
+    await reloadChat.close();
+    // Exercise the real MAIN -> ISOLATED bridge, not only same-world fixtures.
+    await context.route('https://www.fiverr.com/api/inbox/fixture', route => route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ conversations: [{ id: 'network-risk', messages: [{ text: 'Send your password immediately.' }] }] }),
+    }));
+    await context.route('https://www.fiverr.com/inbox/background-fixture', route => route.fulfill({
+      contentType: 'text/html',
+      body: '<html><head><script>window.__INITIAL_STATE__={conversations:[{id:"state-safe",messages:[{text:"Thanks for the logo."}]}]};fetch("/api/inbox/fixture").then(r=>r.json()).then(value=>window.pageResponse=value);</script></head><body><nav><div data-testid="conversation-item" data-conversation-id="network-risk">Network buyer</div><div data-testid="conversation-item" data-conversation-id="state-safe">State buyer</div><div data-testid="conversation-item" data-conversation-id="unknown">Unknown buyer</div></nav><main><header>Selected chat</header></main></body></html>',
+    }));
+    const backgroundChat = await context.newPage();
+    const bridgeLogs = [];
+    backgroundChat.on('console', message => bridgeLogs.push(message.text()));
+    await popup2.evaluate(() => chrome.storage.local.set({ fsd_debug: true }));
+    await backgroundChat.goto('https://www.fiverr.com/inbox/background-fixture');
+    await backgroundChat.waitForFunction(() =>
+      document.querySelector('[data-conversation-id="network-risk"] [data-fsd-flag]')?.dataset.score === '100' &&
+      document.querySelector('[data-conversation-id="state-safe"] [data-fsd-flag]')?.dataset.score === '0').catch(async error => {
+        console.error('Bridge diagnostics:', bridgeLogs, await backgroundChat.locator('nav').innerHTML());
+        throw error;
+      });
+    assert.equal(await backgroundChat.locator('[data-conversation-id="unknown"] [data-fsd-flag]').getAttribute('data-score'), 'null');
+    assert.equal(await backgroundChat.evaluate(() => window.pageResponse.conversations[0].id), 'network-risk');
+    assert.equal(new URL(backgroundChat.url()).pathname, '/inbox/background-fixture');
+    await backgroundChat.close();
     console.log(
       "PASS: real installed MV3 extension: Run, live alert, worker result, popup close, history opt-in, shared tester, delete data, Stop.",
     );

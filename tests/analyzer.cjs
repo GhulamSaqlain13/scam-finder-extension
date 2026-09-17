@@ -183,7 +183,21 @@ for (const text of ["Please design a password reset screen.", "The project inclu
   assert.equal(globalThis.fsdAnalyze(text).sensitiveRequests.length, 0);
 }
 const draft = globalThis.fsdSensitiveInformation.draft("OTP: 938271");
+for (const text of [
+  "Message my manager on Telegram @projectmanager before I place the order.",
+  "I already paid. Fiverr needs your email address before the payment can be released.",
+  "Your account will be suspended in 10 minutes unless you verify it using this link.",
+  "I cannot pay through Fiverr. Send me your PayPal address and I will pay directly.",
+  "Pay the customs fee first and I will release your $2,000 project payment afterward.",
+  "Scan this QR code to confirm your seller account and receive the payment.",
+  "Use this shortened link to confirm your identity before we begin.",
+  "Before I order, send $20 to prove you are a real freelancer. I will send it back.",
+]) assert.ok(globalThis.fsdAnalyze(text).score > 20, "Must not display Safe: " + text);
+assert.ok(globalThis.fsdAnalyze("Never share your password and please send me your OTP.").score >= 96);
+for (const [score, label] of [[null, "Checking"], [0, "Safe"], [20, "Safe"], [21, "Suspicious"], [60, "Suspicious"], [61, "High Risk"], [100, "High Risk"]]) assert.equal(globalThis.fsdDisplayRisk(score), label);
 assert.equal(draft[0].type, "OTP");
 assert.ok(!JSON.stringify(draft).includes("938271"));
 assert.equal(globalThis.fsdSensitiveInformation.draft("The order number is 938271").length, 0);
 assert.equal(globalThis.fsdSensitiveInformation.draft("-----BEGIN PRIVATE KEY-----\nsynthetic\n-----END PRIVATE KEY-----")[0].type, "PRIVATE_KEY");
+
+assert.equal(globalThis.fsdAnalyze("Never share your password and send anyone your OTP.").score, 0);
